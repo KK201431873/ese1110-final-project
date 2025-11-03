@@ -4,13 +4,8 @@ from threads.vision import CameraThread
 from threads.arduino_serial import ArduinoSerialThread
 
 def main():
-    global_data = {}
-    lock = threading.Lock()
-
-    camera_thread = CameraThread(global_data, lock, frequency=5)
-    arduino_serial_thread = ArduinoSerialThread(global_data, lock, frequency=100)
-
-    # TODO: make centralized, global data storage? (like CAN variables in per namespace ig)
+    camera_thread = CameraThread(frequency=5)
+    arduino_serial_thread = ArduinoSerialThread(frequency=100)
 
     print("[MAIN] Starting up robot...")
     camera_thread.start()
@@ -20,7 +15,7 @@ def main():
         while True:
             pass
     except KeyboardInterrupt:
-        camera_thread.stop()
+        camera_thread.kill()
         print("[MAIN] Shutting down robot...")
 
 if __name__ == "__main__":
