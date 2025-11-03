@@ -22,6 +22,7 @@ serial_entries: dict[str, SerialEntry] = {
     "imu.roll": SerialEntry(float, "IMU roll angle", "deg"),
     "imu.pitch": SerialEntry(float, "IMU pitch angle", "deg"),
     "imu.yaw": SerialEntry(float, "IMU yaw angle", "deg"),
+    "debug": SerialEntry(str, "Debug message string", "")
 }
 
 __all__ = ["serial_entries", "SerialEntry"]

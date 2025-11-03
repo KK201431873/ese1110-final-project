@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, TypeAlias
+from dataclasses import dataclass
 import threading
 import time
 
@@ -27,6 +28,17 @@ class PiThreadMeta(ABCMeta):
             return key in PiThread._global_data.get(cls.__name__, {})
 
 
+@dataclass(slots=True)
+class CrashReport():
+    """Contains thread crash status and message."""
+
+    crashed: bool = False
+    """Whether the thread has crashed."""
+
+    message: str = "System is running..."
+    """System or error message."""
+
+
 class PiThread(threading.Thread, metaclass=PiThreadMeta):
     """
     Base class for singleton threads with shared, class-scoped global data.
@@ -40,6 +52,12 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
     All subclasses share one synchronized global data registry but each class has its own namespace.
     """
 
+    _crash_report: CrashReport = CrashReport()
+    """Contains thread crash status and message."""
+
+    _crash_lock: threading.Lock = threading.Lock()
+    """Lock for accessing crash report."""
+
     _instance_registry: dict[str, bool] = {}
     """Track singleton instances, mapping subclass names to instance existence."""
 
@@ -51,8 +69,7 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
 
     def __init__(self, 
                  frequency: int = 100,
-                 exit_on_error: bool = True,
-                 raise_on_error: bool = True
+                 exit_on_error: bool = True
                 ) -> None:
         """
         Creates a singleton thread with name and global data reference.
@@ -65,7 +82,7 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         # Enforce singleton invariant
         with PiThread._lock:
             if class_name in PiThread._instance_registry and PiThread._instance_registry[class_name]:
-                self.raise_error(RuntimeError, f"Only one instance of {class_name} allowed")
+                PiThread.raise_error_cls(RuntimeError, f"Only one instance of {class_name} allowed")
             PiThread._instance_registry[class_name] = True
             PiThread._global_data[class_name] = {}
         
@@ -73,7 +90,6 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         super().__init__(daemon=True, name=class_name)
         self.set_thread_frequency(frequency)
         self._exit_on_error: bool = exit_on_error
-        self._raise_on_error: bool = raise_on_error
         self._alive: bool = False
 
         # Run subclass initialization
@@ -82,10 +98,9 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         except Exception as e:
             if self._exit_on_error:
                 try:
-                    self._on_shutdown_impl()
+                    self.kill()
                 except Exception as shutdown_err:
                     self.print(f"Error in shutdown after initialization failure: {shutdown_err}")
-            if self._raise_on_error:
                 self.raise_error(RuntimeError, f"Error in initialization: {e}")
             else:
                 self.print(f"Error in initialization: {e}")
@@ -128,17 +143,12 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                 self._on_start_impl()
                 self._alive = True
             except Exception as e:
+                message = f"Error on start: {e}"
                 if self._exit_on_error:
-                    try:
-                        self.kill()
-                    except Exception as shutdown_err:
-                        self.print(f"Error in shutdown after start failure: {shutdown_err}")
-                        self._alive = False
-                        self.join()
-                if self._raise_on_error:
-                    self.raise_error(RuntimeError, f"Error on start: {e}")
+                    self.kill()
+                    self.raise_error(RuntimeError, message)
                 else:
-                    self.print(f"Error on start: {e}")
+                    self.print(message)
 
         # Main loop logic
         next_loop_time = time.perf_counter()
@@ -146,12 +156,12 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
             try:
                 self._loop_impl()
             except Exception as e:
+                message = f"Error in loop: {e}"
                 if self._exit_on_error:
                     self.kill()
-                if self._raise_on_error:
-                    self.raise_error(RuntimeError, f"Error in loop: {e}")
+                    self.raise_error(RuntimeError, message)
                 else:
-                    self.print(f"Error in loop: {e}")
+                    self.print(message)
 
             now = time.perf_counter()
             blocking_time = next_loop_time - now
@@ -166,10 +176,27 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
 
     def kill(self, join: bool = True) -> None:
         """Permanently stop this thread. Cannot be restarted or recreated."""
-        self._on_shutdown_impl()
+        try:
+            self._on_shutdown_impl()
+        except Exception as shutdown_err:
+            self.raise_error(RuntimeError, f"Error in shutdown: {shutdown_err}")
         self._alive = False
-        if join and self.is_alive():
+        with PiThread._lock:
+            if self.name in PiThread._instance_registry:
+                PiThread._instance_registry[self.name] = False
+            if self.name in PiThread._global_data:
+                PiThread._global_data[self.name].clear()
+        if join and self.is_alive() and threading.current_thread() != self:
             self.join()
+    
+    @classmethod
+    def kill_all(cls) -> None:
+        """Kill all running PiThread instances safely."""
+        for t in cls.get_all_threads():
+            try:
+                t.kill()
+            except Exception as e:
+                print(f"[{cls.__name__}] Error shutting down {t.name}: {e}")
         
     # --- Thread API ---
     def set_thread_frequency(self, frequency: int) -> None:
@@ -222,8 +249,33 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
     @classmethod
     def raise_error_cls(cls, exc_type: type[Exception], message: str) -> None:
         """Raise an exception with thread name prefix."""
-        raise exc_type(f"[{cls.__name__}] {message}")
+        exception = exc_type(f"[{cls.__name__}] {message}")
+        with PiThread._crash_lock:
+            PiThread._crash_report.crashed = True
+            PiThread._crash_report.message = str(exception)
+        raise exception
     
     def raise_error(self, exc_type: type[Exception], message: str) -> None:
         """Raise an exception with thread name prefix."""
-        raise exc_type(f"[{self.name}] {message}")
+        exception = exc_type(f"[{self.name}] {message}")
+        with PiThread._crash_lock:
+            PiThread._crash_report.crashed = True
+            PiThread._crash_report.message = str(exception)
+        raise exception
+
+    @classmethod
+    def has_crashed(cls) -> bool:
+        """Return True if any thread has crashed."""
+        with PiThread._crash_lock:
+            return PiThread._crash_report.crashed
+
+    @classmethod
+    def get_crash_message(cls) -> str:
+        """Return the latest crash message."""
+        with PiThread._crash_lock:
+            return PiThread._crash_report.message
+    
+    @classmethod
+    def get_all_threads(cls) -> list["PiThread"]:
+        """Return all currently running PiThread instances."""
+        return [t for t in threading.enumerate() if isinstance(t, PiThread)]

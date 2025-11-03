@@ -6,7 +6,7 @@ class ArduinoSerialInterface():
     _serial_port: str = "/dev/ttyACM0"
     """USB on Raspberry Pi that Arduino is connected to."""
 
-    _baudrate: int = 9600
+    _baudrate: int = 115200
     """Sync with Arduino."""
 
     _ser: serial.Serial | None = None
