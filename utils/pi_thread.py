@@ -75,7 +75,20 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         self._exit_on_error: bool = exit_on_error
         self._raise_on_error: bool = raise_on_error
         self._alive: bool = False
-        self._on_created_impl()
+
+        # Run subclass initialization
+        try:
+            self._on_created_impl()
+        except Exception as e:
+            if self._exit_on_error:
+                try:
+                    self._on_shutdown_impl()
+                except Exception as shutdown_err:
+                    self.print(f"Error in shutdown after initialization failure: {shutdown_err}")
+            if self._raise_on_error:
+                self.raise_error(RuntimeError, f"Error in initialization: {e}")
+            else:
+                self.print(f"Error in initialization: {e}")
     
     # --- Initialization and thread life cycle ---
     @abstractmethod
