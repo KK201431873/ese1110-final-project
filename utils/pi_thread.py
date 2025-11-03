@@ -210,9 +210,19 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
             return dict(PiThread._global_data.get(cls.__name__, {}))
 
     # --- Debug Functions ---
+    @classmethod
+    def print_cls(cls, *values: object) -> None:
+        """Thread-safe print with thread name prefix."""
+        print(f"[{cls.__name__}]", *values)
+
     def print(self, *values: object) -> None:
         """Thread-safe print with thread name prefix."""
         print(f"[{self.name}]", *values)
+    
+    @classmethod
+    def raise_error_cls(cls, exc_type: type[Exception], message: str) -> None:
+        """Raise an exception with thread name prefix."""
+        raise exc_type(f"[{cls.__name__}] {message}")
     
     def raise_error(self, exc_type: type[Exception], message: str) -> None:
         """Raise an exception with thread name prefix."""
