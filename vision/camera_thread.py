@@ -1,1 +1,0 @@
-# read camera images, do apriltag detection, run object detector
