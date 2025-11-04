@@ -1,26 +1,36 @@
-# serial comms with Arduino
+from utils import ArduinoSerialInterface
 from utils import PiThread
-import time
+from .arduino_serial_registers import serial_entries
 
 class ArduinoSerialThread(PiThread):
-    print_toggle: bool = True
-    last_time: float = -1
 
     def _on_created_impl(self) -> None:
-        self["print"] = self.print_toggle
+        pass
 
     def _on_start_impl(self) -> None:
-        self.last_time = time.perf_counter()
         self.print("Alive!")
 
 
     def _loop_impl(self) -> None:
-        now = time.perf_counter()
-        if now - self.last_time >= 1.0:
-            self.print_toggle = not self.print_toggle
-            self["print"] = self.print_toggle
-            self.last_time = now
-    
+        data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=50)
+        if not data_lines:
+            return
+        
+        # Parse data lines
+        for line in data_lines:
+            split_line = line.split(":", 1)
+            if len(split_line) != 2:
+                continue
+
+            key, value = split_line
+            entry = serial_entries.get(key)
+            if entry:
+                try:
+                    cast_value = entry.cast(value)
+                    self[key] = cast_value # Write to global data
+                    self.print(f"Received {key}: {self[key]} {type(self[key])}")
+                except ValueError:
+                    self.print(f"Bad value for key {key}: {value}")
 
     def _on_shutdown_impl(self) -> None:
         pass
