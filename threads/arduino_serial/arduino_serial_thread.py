@@ -28,7 +28,7 @@ class ArduinoSerialThread(PiThread):
                 try:
                     cast_value = entry.cast(value)
                     self[key] = cast_value # Write to global data
-                    self.print(f"Received {key}: {self[key]} {type(self[key])}")
+                    # self.print(f"Received {key}: {self[key]} {type(self[key])}")
                 except ValueError:
                     self.print(f"Bad value for key {key}: {value}")
 
