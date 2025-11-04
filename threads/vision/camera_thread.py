@@ -8,7 +8,7 @@ import numpy as np
 import time
 import cv2
 
-settings = load_settings()["camera"]
+settings = load_settings()["camera_thread"]
 model_path: str = settings["model_path"]
 input_size: tuple[int, int] = tuple(settings["input_size"])
 min_score: float = settings["min_score"]
@@ -16,7 +16,6 @@ exposure_time: int = settings["exposure_time"]
 
 class CameraThread(PiThread):
     _model_path: str = model_path
-    # model_path: str = "threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
     _input_size: tuple[int, int] = input_size
     _min_score: float = min_score
 

@@ -1,15 +1,15 @@
 from utils.arduino_serial_interface import ArduinoSerialInterface
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
-from .arduino_serial_registers import serial_entries
+from .sensor_thread_registers import sensor_variables
 
-class ArduinoSerialThread(PiThread):
+class SensorThread(PiThread):
 
     def _on_created_impl(self) -> None:
         pass
 
     def _on_start_impl(self) -> None:
-        settings = load_settings()["arduino_serial"]
+        settings = load_settings()["sensor_thread"]
         self.max_lines_read_per_loop = settings["max_lines_read_per_loop"]
         self.print("Alive!")
 
@@ -26,12 +26,12 @@ class ArduinoSerialThread(PiThread):
                 continue
 
             key, value = split_line
-            entry = serial_entries.get(key)
+            entry = sensor_variables.get(key)
             if entry:
                 try:
                     cast_value = entry.cast(value)
                     self[key] = cast_value # Write to global data
-                    self.print(f"Received {key}: {self[key]} {type(self[key])}")
+                    # self.print(f"Received {key}: {self[key]} {type(self[key])}")
                 except ValueError:
                     self.print(f"Bad value for key {key}: {value}")
 

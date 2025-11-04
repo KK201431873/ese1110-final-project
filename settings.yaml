@@ -1,15 +1,21 @@
-camera:
+camera_thread:
   frequency: 10
   model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+  # model_path: "threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
   input_size: [256, 256]
   min_score: 0.3
   exposure_time: 5000
 
-arduino_serial:
+sensor_thread:
   frequency: 100
+  max_lines_read_per_loop: 50
+
+controller_thread:
+  frequency: 60
+
+arduino_serial_interface:
   serial_port: "/dev/ttyACM0"
   baudrate: 115200
-  max_lines_read_per_loop: 50
 
 main:
   with_watchdog: true

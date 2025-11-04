@@ -3,7 +3,7 @@ from utils.pi_thread import PiThread
 import threading
 import serial
 
-settings = load_settings()["arduino_serial"]
+settings = load_settings()["arduino_serial_interface"]
 serial_port: str = settings["serial_port"]
 baudrate: int = settings["baudrate"]
 

@@ -1,5 +1,5 @@
 """
-Defines the expected serial keys and their data types for Arduino -> Raspberry Pi communication.
+Defines the expected sensor variable keys and their data types for Arduino -> Raspberry Pi communication.
 
 Expected serial message format:
     <key>:<value>\n
@@ -18,7 +18,7 @@ class SerialEntry:
     description: str = ""
     units: str = ""
 
-serial_entries: dict[str, SerialEntry] = {
+sensor_variables: dict[str, SerialEntry] = {
     # IMU
     "imu.roll": SerialEntry(float, "IMU roll angle", "deg"),
     "imu.pitch": SerialEntry(float, "IMU pitch angle", "deg"),
@@ -28,4 +28,4 @@ serial_entries: dict[str, SerialEntry] = {
     "debug": SerialEntry(str, "Debug message string", "")
 }
 
-__all__ = ["serial_entries", "SerialEntry"]
+__all__ = ["sensor_variables", "SerialEntry"]

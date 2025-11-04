@@ -1,5 +1,6 @@
 from threads.vision.camera_thread import CameraThread
-from threads.arduino_serial.arduino_serial_thread import ArduinoSerialThread
+from threads.peripherals.sensor_thread import SensorThread
+from threads.controller.controller_thread import ControllerThread
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 import numpy as np
@@ -9,20 +10,25 @@ import time
 
 def main(with_watchdog: bool = True, show_camera: bool = False):
     if show_camera:
-        from cv2 import namedWindow, imshow, waitKey, destroyAllWindows, WINDOW_NORMAL
         cv2.namedWindow("Ping Pong Detection", cv2.WINDOW_NORMAL)
 
+    # --- Init threads ---
     settings = load_settings()
-    camera_thread_frequency = settings["camera"]["frequency"]
-    arduino_serial_thread_frequency = settings["arduino_serial"]["frequency"]
+    camera_thread_frequency = settings["camera_thread"]["frequency"]
+    sensor_thread_frequency = settings["sensor_thread"]["frequency"]
+    controller_thread_frequency = settings["controller_thread"]["frequency"]
 
     camera_thread = CameraThread(frequency=camera_thread_frequency)
-    arduino_serial_thread = ArduinoSerialThread(frequency=arduino_serial_thread_frequency)
+    sensor_thread = SensorThread(frequency=sensor_thread_frequency)
+    controller_thread = ControllerThread(frequency=controller_thread_frequency)
 
+    # --- Start threads ---
     print("[MAIN] Starting up robot...")
     camera_thread.start()
-    arduino_serial_thread.start()
+    sensor_thread.start()
+    controller_thread.start()
 
+    # --- Main loop ---
     try:
         while True:
             crashed = False
@@ -39,7 +45,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 break
 
             # print(f"[MAIN] Camera Thread Freq: {camera_thread.get_measured_frequency():.2f} Hz")
-            # print(f"[MAIN] Arduino Serial Thread Freq: {arduino_serial_thread.get_measured_frequency():.2f} Hz")
+            # print(f"[MAIN] Sensor Thread Freq: {sensor_thread.get_measured_frequency():.2f} Hz")
 
             if show_camera:
                 # Show CameraThread's annotated frame
@@ -51,7 +57,8 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 cv2.waitKey(20)
             else:
                 time.sleep(0.1)
-            
+    
+    # --- Exit condition ---
     except KeyboardInterrupt:
         PiThread.kill_all()
         if show_camera:
