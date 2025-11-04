@@ -8,7 +8,10 @@ import time
 # source ~/yolo-env/bin/activate
 
 # Load your ONNX model
-model = YOLO("../vision/detection_models/pong_10-31-25_1033PM.onnx")
+# model_path = "./threads/vision/detection_models/pong_10-31-25_1033PM.onnx"
+model_path = "./threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+# model_path = "./threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
+model = YOLO(model_path)
 
 # Initialize camera
 picam2 = Picamera2()
@@ -21,7 +24,7 @@ time.sleep(1)
 
 picam2.set_controls({
     "AeEnable": False,
-    "ExposureTime": 10000 # microseconds
+    "ExposureTime": 5000 # microseconds
 })
 
 
@@ -88,7 +91,7 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
     
-    time.sleep(1)
+    # time.sleep(1)
 
 # Cleanup
 cv2.destroyAllWindows()

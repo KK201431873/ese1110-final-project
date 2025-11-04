@@ -19,9 +19,12 @@ class SerialEntry:
     units: str = ""
 
 serial_entries: dict[str, SerialEntry] = {
+    # IMU
     "imu.roll": SerialEntry(float, "IMU roll angle", "deg"),
     "imu.pitch": SerialEntry(float, "IMU pitch angle", "deg"),
     "imu.yaw": SerialEntry(float, "IMU yaw angle", "deg"),
+
+    # Debug
     "debug": SerialEntry(str, "Debug message string", "")
 }
 

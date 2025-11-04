@@ -12,7 +12,7 @@ class ArduinoSerialThread(PiThread):
 
 
     def _loop_impl(self) -> None:
-        data_lines = ArduinoSerialInterface.read_lines(which_thread=self)
+        data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=50)
         if not data_lines:
             return
         
@@ -31,7 +31,6 @@ class ArduinoSerialThread(PiThread):
                     self.print(f"Received {key}: {self[key]} {type(self[key])}")
                 except ValueError:
                     self.print(f"Bad value for key {key}: {value}")
-    
 
     def _on_shutdown_impl(self) -> None:
         pass
