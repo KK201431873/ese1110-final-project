@@ -1,5 +1,6 @@
 from threads.vision.camera_thread import CameraThread
 from threads.arduino_serial.arduino_serial_thread import ArduinoSerialThread
+from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 import numpy as np
 import threading
@@ -11,13 +12,16 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
         from cv2 import namedWindow, imshow, waitKey, destroyAllWindows, WINDOW_NORMAL
         cv2.namedWindow("Ping Pong Detection", cv2.WINDOW_NORMAL)
 
+    settings = load_settings()
+    camera_thread_frequency = settings["camera"]["frequency"]
+    arduino_serial_thread_frequency = settings["arduino_serial"]["frequency"]
 
-    camera_thread = CameraThread(frequency=10)
-    # arduino_serial_thread = ArduinoSerialThread(frequency=100)
+    camera_thread = CameraThread(frequency=camera_thread_frequency)
+    arduino_serial_thread = ArduinoSerialThread(frequency=arduino_serial_thread_frequency)
 
     print("[MAIN] Starting up robot...")
     camera_thread.start()
-    # arduino_serial_thread.start()
+    arduino_serial_thread.start()
 
     try:
         while True:
@@ -33,6 +37,9 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                     PiThread.kill_all()
                     time.sleep(0.1)
                 break
+
+            # print(f"[MAIN] Camera Thread Freq: {camera_thread.get_measured_frequency():.2f} Hz")
+            # print(f"[MAIN] Arduino Serial Thread Freq: {arduino_serial_thread.get_measured_frequency():.2f} Hz")
 
             if show_camera:
                 # Show CameraThread's annotated frame
@@ -52,4 +59,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
         print("[MAIN] Shutting down robot...")
 
 if __name__ == "__main__":
-    main(with_watchdog=True, show_camera=True)
+    settings = load_settings()["main"]
+    with_watchdog = settings["with_watchdog"]
+    show_camera = settings["show_camera"]
+    main(with_watchdog=with_watchdog, show_camera=show_camera)

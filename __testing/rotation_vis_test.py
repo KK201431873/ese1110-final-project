@@ -8,13 +8,12 @@ module_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', ''))
 # Add the directory to sys.path
 sys.path.append(module_dir)
 
-from threads.vision import CameraThread
-from threads.arduino_serial import ArduinoSerialThread
-from utils import PiThread
+from threads.arduino_serial.arduino_serial_thread import ArduinoSerialThread
+from utils.pi_thread import PiThread
 import threading
 import time
 
-from utils import update_orientation
+from utils.rotation_visualizer import update_orientation
 import matplotlib.pyplot as plt
 import numpy as np
 

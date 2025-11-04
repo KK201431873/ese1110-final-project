@@ -1,12 +1,17 @@
+from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 import threading
 import serial
 
+settings = load_settings()["arduino_serial"]
+serial_port: str = settings["serial_port"]
+baudrate: int = settings["baudrate"]
+
 class ArduinoSerialInterface():
-    _serial_port: str = "/dev/ttyACM0"
+    _serial_port: str = serial_port
     """USB on Raspberry Pi that Arduino is connected to."""
 
-    _baudrate: int = 115200
+    _baudrate: int = baudrate
     """Sync with Arduino."""
 
     _ser: serial.Serial | None = None

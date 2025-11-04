@@ -101,6 +101,8 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         # Create thread
         super().__init__(daemon=True, name=class_name)
         self.set_thread_frequency(frequency)
+        self._last_loop_time = 0.0
+        self._measured_frequency = 0.0
         self._exit_on_error: bool = exit_on_error
         self._alive: bool = False
 
@@ -165,6 +167,7 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         # Main loop logic
         next_loop_time = time.perf_counter()
         while self._alive:
+            # Run subclass loop
             try:
                 self._loop_impl()
             except Exception as e:
@@ -175,7 +178,16 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                 else:
                     self.print(message)
 
+            # Calculate real loop frequency
             now = time.perf_counter()
+            delta_time = now - self._last_loop_time
+            self._last_loop_time = now
+            if delta_time > 0:
+                self._measured_frequency = 1.0 / delta_time
+            else:
+                self._measured_frequency = -1.0
+
+            # Control loop timing
             blocking_time = next_loop_time - now
             if blocking_time < 0:
                 next_loop_time = now
@@ -218,6 +230,10 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         if frequency <= 0:
             self.raise_error(ValueError, "Frequency must be positive")
         self._frequency = frequency
+    
+    def get_measured_frequency(self) -> float:
+        """Get the measured loop frequency in Hz."""
+        return self._measured_frequency
 
     def get_name(self) -> str:
         """Get thread name."""

@@ -1,4 +1,5 @@
 # read camera images, do apriltag detection, run object detector
+from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 from picamera2 import Picamera2
 import onnxruntime as ort
@@ -7,36 +8,17 @@ import numpy as np
 import time
 import cv2
 
-def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
-    """
-    Resize image to new_shape while keeping aspect ratio, pad with `color`.
-    Returns: resized_padded_img, scale, (pad_left, pad_top)
-    This mirrors the typical YOLO letterbox behaviour.
-    """
-    orig_h, orig_w = img.shape[:2]
-    new_w, new_h = new_shape
-    # compute scale
-    scale = min(new_w / orig_w, new_h / orig_h)
-    # compute new unpadded size
-    resized_w, resized_h = int(round(orig_w * scale)), int(round(orig_h * scale))
-    # resize
-    resized = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
-    # compute padding
-    pad_w = new_w - resized_w
-    pad_h = new_h - resized_h
-    pad_left = pad_w // 2
-    pad_right = pad_w - pad_left
-    pad_top = pad_h // 2
-    pad_bottom = pad_h - pad_top
-    padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
-                                borderType=cv2.BORDER_CONSTANT, value=color)
-    return padded, scale, (pad_left, pad_top)
+settings = load_settings()["camera"]
+model_path: str = settings["model_path"]
+input_size: tuple[int, int] = tuple(settings["input_size"])
+min_score: float = settings["min_score"]
+exposure_time: int = settings["exposure_time"]
 
 class CameraThread(PiThread):
-    model_path: str = "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+    _model_path: str = model_path
     # model_path: str = "threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
-    input_size: tuple[int, int] = (256, 256)
-    min_score: float = 0.65
+    _input_size: tuple[int, int] = input_size
+    _min_score: float = min_score
 
     def _on_created_impl(self) -> None:
         # Initialize camera
@@ -47,13 +29,13 @@ class CameraThread(PiThread):
         self.picam2.configure(preview_config)
         
         # Initialize ONNX Runtime
-        self.session = ort.InferenceSession(self.model_path, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(self._model_path, providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
 
         # Get input size from model
         input_shape = self.session.get_inputs()[0].shape  # e.g., [1, 3, 256, 256]
-        self.input_size = (input_shape[2], input_shape[3])
+        self._input_size = (input_shape[2], input_shape[3])
 
         # Detector class names
         self.class_names = ["ping-pong-ball"]  # update with your classes
@@ -63,7 +45,7 @@ class CameraThread(PiThread):
         time.sleep(1)
         self.picam2.set_controls({
             "AeEnable": False,
-            "ExposureTime": 5000 # microseconds
+            "ExposureTime": exposure_time # microseconds
         })
         self.print("Alive!")
 
@@ -90,7 +72,7 @@ class CameraThread(PiThread):
         annotated = frame.copy()
         detection_points = []
         for (x1, y1, x2, y2), score, cls in zip(boxes, confidences, class_ids):
-            if score < self.min_score:
+            if score < self._min_score:
                 continue
             color = (0, 255, 0)
             label = f"{self.class_names[int(cls)] if int(cls) < len(self.class_names) else 'obj'} {score:.2f}"
@@ -115,7 +97,7 @@ class CameraThread(PiThread):
 
         # letterbox to model size — returns padded square and scale & pad offsets,
         # store pad/scale for mapping back in postprocess (store as instance attrs)
-        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self.input_size)
+        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self._input_size)
         # save for postprocess
         self._last_pre_scale = scale
         self._last_pre_pad = (pad_x, pad_y)
@@ -145,7 +127,7 @@ class CameraThread(PiThread):
 
         boxes, confidences, class_ids = [], [], []
 
-        input_w, input_h = self.input_size
+        input_w, input_h = self._input_size
         orig_h, orig_w = orig_shape
 
         # get scale & pad saved during preprocess
@@ -165,7 +147,7 @@ class CameraThread(PiThread):
             scale_y = inv_scale
 
         for x, y, w, h, conf in preds:
-            if conf < self.min_score:
+            if conf < self._min_score:
                 continue
 
             # x,y,w,h are in padded model space (0..input_w/input_h)
@@ -193,7 +175,7 @@ class CameraThread(PiThread):
         # Apply NMS
         final_boxes, final_confs, final_cls = [], [], []
         if boxes:
-            indices = cv2.dnn.NMSBoxes(boxes, confidences, self.min_score, 0.45)
+            indices = cv2.dnn.NMSBoxes(boxes, confidences, self._min_score, 0.45)
             if len(indices) > 0:
                 indices = np.array(indices).flatten()
                 for i in indices:
@@ -206,3 +188,28 @@ class CameraThread(PiThread):
 
     def _on_shutdown_impl(self) -> None:
         self.picam2.stop()
+
+def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
+    """
+    Resize image to new_shape while keeping aspect ratio, pad with `color`.
+    Returns: resized_padded_img, scale, (pad_left, pad_top)
+    This mirrors the typical YOLO letterbox behaviour.
+    """
+    orig_h, orig_w = img.shape[:2]
+    new_w, new_h = new_shape
+    # compute scale
+    scale = min(new_w / orig_w, new_h / orig_h)
+    # compute new unpadded size
+    resized_w, resized_h = int(round(orig_w * scale)), int(round(orig_h * scale))
+    # resize
+    resized = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
+    # compute padding
+    pad_w = new_w - resized_w
+    pad_h = new_h - resized_h
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
+                                borderType=cv2.BORDER_CONSTANT, value=color)
+    return padded, scale, (pad_left, pad_top)
