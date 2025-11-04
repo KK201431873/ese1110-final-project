@@ -1,5 +1,6 @@
-from utils import ArduinoSerialInterface
-from utils import PiThread
+from utils.arduino_serial_interface import ArduinoSerialInterface
+from utils.load_settings import load_settings
+from utils.pi_thread import PiThread
 from .arduino_serial_registers import serial_entries
 
 class ArduinoSerialThread(PiThread):
@@ -8,11 +9,13 @@ class ArduinoSerialThread(PiThread):
         pass
 
     def _on_start_impl(self) -> None:
+        settings = load_settings()["arduino_serial"]
+        self.max_lines_read_per_loop = settings["max_lines_read_per_loop"]
         self.print("Alive!")
 
 
     def _loop_impl(self) -> None:
-        data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=50)
+        data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=self.max_lines_read_per_loop)
         if not data_lines:
             return
         
