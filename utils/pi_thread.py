@@ -12,19 +12,25 @@ class PiThreadMeta(ABCMeta):
 
     def __getitem__(cls, key: str) -> DataValue:
         """Thread-safe read from global data value using key."""
-        with PiThread._lock:
+        if cls.__name__ not in PiThread._global_data_locks:
+            return None
+        with PiThread._global_data_locks[cls.__name__]:
             return PiThread._global_data.get(cls.__name__, {}).get(key, None)
 
     def __setitem__(cls, key: str, value: DataValue) -> None:
         """Thread-safe write a key-value pair to global data."""
-        with PiThread._lock:
+        if cls.__name__ not in PiThread._global_data_locks:
+            return
+        with PiThread._global_data_locks[cls.__name__]:
             if cls.__name__ not in PiThread._global_data:
                 PiThread._global_data[cls.__name__] = {}
             PiThread._global_data[cls.__name__][key] = value
     
     def __contains__(cls, key: str) -> bool:
         """Return True if key exists in this thread's global data."""
-        with PiThread._lock:
+        if cls.__name__ not in PiThread._global_data_locks:
+            return False
+        with PiThread._global_data_locks[cls.__name__]:
             return key in PiThread._global_data.get(cls.__name__, {})
 
 
@@ -64,8 +70,11 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
     _global_data: dict[str, ThreadData] = {}
     """Shared global data across all threads."""
 
-    _lock: threading.Lock = threading.Lock()
-    """Lock for accessing global data."""
+    _global_data_locks: dict[str, threading.Lock] = {}
+    """Per-thread locks for accessing global data."""
+
+    _registry_lock: threading.Lock = threading.Lock()
+    """Lock for registering new threads."""
 
     def __init__(self, 
                  frequency: int = 100,
@@ -80,7 +89,10 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         class_name = self.__class__.__name__
 
         # Enforce singleton invariant
-        with PiThread._lock:
+        with PiThread._registry_lock:
+            if class_name not in PiThread._global_data_locks:
+                PiThread._global_data_locks[class_name] = threading.Lock()
+        with PiThread._global_data_locks[class_name]:
             if class_name in PiThread._instance_registry and PiThread._instance_registry[class_name]:
                 PiThread.raise_error_cls(RuntimeError, f"Only one instance of {class_name} allowed")
             PiThread._instance_registry[class_name] = True
@@ -181,11 +193,13 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         except Exception as shutdown_err:
             self.raise_error(RuntimeError, f"Error in shutdown: {shutdown_err}")
         self._alive = False
-        with PiThread._lock:
-            if self.name in PiThread._instance_registry:
-                PiThread._instance_registry[self.name] = False
-            if self.name in PiThread._global_data:
-                PiThread._global_data[self.name].clear()
+        if self.name in PiThread._global_data_locks:
+            with PiThread._global_data_locks[self.name]:
+                if self.name in PiThread._instance_registry:
+                    PiThread._instance_registry[self.name] = False
+                if self.name in PiThread._global_data:
+                    PiThread._global_data[self.name].clear()
+            del PiThread._global_data_locks[self.name]
         if join and self.is_alive() and threading.current_thread() != self:
             self.join()
     
@@ -215,25 +229,33 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
     
     def __setitem__(self, key: str, value: DataValue) -> None:
         """Thread-safe write a key-value pair to global data."""
-        with PiThread._lock:
+        if self.name not in PiThread._global_data_locks:
+            return
+        with PiThread._global_data_locks[self.name]:
             if self.name not in PiThread._global_data:
                 PiThread._global_data[self.name] = {}
             PiThread._global_data[self.name][key] = value
     
     def __getitem__(self, key: str) -> DataValue:
         """Thread-safe read from this thread's global data value using key."""
-        with PiThread._lock:
+        if self.name not in PiThread._global_data_locks:
+            return None
+        with PiThread._global_data_locks[self.name]:
             return PiThread._global_data.get(self.name, {}).get(key, None)
     
     def __contains__(self, key: str) -> bool:
         """Thread-safe check if key exists in this thread's global data."""
-        with PiThread._lock:
+        if self.name not in PiThread._global_data_locks:
+            return False
+        with PiThread._global_data_locks[self.name]:
             return key in PiThread._global_data.get(self.name, {})
     
     @classmethod
     def get_global_data(cls) -> dict[str, Any]:
         """Return this thread’s entire global data dictionary (read-only)."""
-        with PiThread._lock:
+        if cls.__name__ not in PiThread._global_data_locks:
+            return {}
+        with PiThread._global_data_locks[cls.__name__]:
             return dict(PiThread._global_data.get(cls.__name__, {}))
 
     # --- Debug Functions ---
