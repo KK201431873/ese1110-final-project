@@ -5,25 +5,40 @@ from picamera2 import Picamera2
 import onnxruntime as ort
 import numpy.typing as npt
 import numpy as np
+import math
 import time
 import cv2
 
 settings = load_settings()["camera_thread"]
+
+# --- Model config ---
 model_path: str = settings["model_path"]
-input_size: tuple[int, int] = tuple(settings["input_size"])
+frame_size: tuple[int, int] = tuple(settings["frame_size"])
+model_input_size: tuple[int, int] = tuple(settings["model_input_size"])
 min_score: float = settings["min_score"]
 exposure_time: int = settings["exposure_time"]
 
+# --- Pose estimation config---
+FOV: float = settings["FOV"]
+# fov_x: float = math.radians(settings["fov_x"])
+# fov_y: float = math.radians(settings["fov_y"])
+lens_incline: float = math.radians(settings["lens_incline"])
+lens_height: float = settings["lens_height"]
+lens_lateral_offset: float = settings["lens_lateral_offset"]
+lens_forward_offset: float = settings["lens_forward_offset"]
+lens_angular_offset: float = math.radians(settings["lens_angular_offset"])
+pong_ball_diameter: float = settings["pong_ball_diameter"]
+
 class CameraThread(PiThread):
     _model_path: str = model_path
-    _input_size: tuple[int, int] = input_size
+    _model_input_size: tuple[int, int] = model_input_size
     _min_score: float = min_score
 
     def _on_created_impl(self) -> None:
         # Initialize camera
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
-            main={"format": "XRGB8888", "size": (640, 480)}
+            main={"format": "XRGB8888", "size": frame_size}
         )
         self.picam2.configure(preview_config)
         
@@ -34,7 +49,7 @@ class CameraThread(PiThread):
 
         # Get input size from model
         input_shape = self.session.get_inputs()[0].shape  # e.g., [1, 3, 256, 256]
-        self._input_size = (input_shape[2], input_shape[3])
+        self._model_input_size = (input_shape[2], input_shape[3])
 
         # Detector class names
         self.class_names = ["ping-pong-ball"]  # update with your classes
@@ -78,7 +93,22 @@ class CameraThread(PiThread):
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             cv2.putText(annotated, label, (x1, y1 - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-            detection_points.append(((x1 + x2) / 2, min(y1, y2)))
+            ball_px = (x1 + x2) / 2
+            ball_py = min(y1, y2)
+            detection_point = relative_ball_position((ball_px, ball_py))
+
+            if detection_point is None:
+                continue
+
+            real_x, real_y = detection_point
+
+            # show ball pos
+            cv2.putText(annotated, f"({real_x:.1f}cm, {real_y:.1f}cm)", (x1, y2 + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            
+            cv2.circle(annotated, (int(ball_px), int(ball_py)), 5, (0,0,0), cv2.FILLED)
+
+            detection_points.append(detection_point)
 
         # Share detection data
         self["detection.frame"] = annotated
@@ -96,7 +126,7 @@ class CameraThread(PiThread):
 
         # letterbox to model size — returns padded square and scale & pad offsets,
         # store pad/scale for mapping back in postprocess (store as instance attrs)
-        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self._input_size)
+        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self._model_input_size)
         # save for postprocess
         self._last_pre_scale = scale
         self._last_pre_pad = (pad_x, pad_y)
@@ -126,7 +156,7 @@ class CameraThread(PiThread):
 
         boxes, confidences, class_ids = [], [], []
 
-        input_w, input_h = self._input_size
+        input_w, input_h = self._model_input_size
         orig_h, orig_w = orig_shape
 
         # get scale & pad saved during preprocess
@@ -212,3 +242,54 @@ def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
     padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
                                 borderType=cv2.BORDER_CONSTANT, value=color)
     return padded, scale, (pad_left, pad_top)
+
+def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
+    """
+    Estimates the ping-pong ball's position relative to the robot given the 
+    midpoint of its bounding box's top edge. Returns (x, y) in cm, in accordance
+    with the robot's coordinate system defined in settings.yaml.
+    """
+    # Get pixel coordinates of midpoint of top edge of bounding box.
+    px, py = ball_point
+
+    # Get camera frame midpoint
+    mid_x, mid_y = frame_size[0]/2, frame_size[1]/2
+
+    # Back-solve for projected coordinates
+    c_px = (px - mid_x) / FOV;
+    c_py = (mid_y - py) / FOV;
+
+    print(c_px, c_py)
+
+    projectedX_numer = -c_py*math.sin(lens_incline) - math.cos(lens_incline);
+    projectedX_denom = c_py*math.cos(lens_incline) - math.sin(lens_incline);
+    if (projectedX_denom == 0): 
+        return None
+
+    height_above_ball = lens_height - pong_ball_diameter
+    projectedX = height_above_ball * projectedX_numer / projectedX_denom;
+    projectedY = -(projectedX*math.cos(lens_incline) + height_above_ball*math.sin(lens_incline)) * c_px;
+
+    return (projectedX, projectedY)
+
+# import math
+
+# def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
+#     px, py = ball_point
+#     mid_x, mid_y = frame_size[0] / 2, frame_size[1] / 2
+
+#     # Convert pixel offsets to tangent of angles
+#     c_px = math.tan((px - mid_x) / frame_size[0] * fov_x)
+#     c_py = math.tan((mid_y - py) / frame_size[1] * fov_y)
+
+#     h = lens_height - pong_ball_diameter
+
+#     # Compute ray intersection with ground
+#     down_angle = lens_incline + math.atan(c_py)
+#     if abs(math.tan(down_angle)) < 1e-6:
+#         return None
+
+#     X_cam = h / math.tan(down_angle)
+#     Y_cam = X_cam * c_px
+
+#     return (X_cam, Y_cam)

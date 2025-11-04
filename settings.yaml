@@ -1,10 +1,48 @@
 camera_thread:
   frequency: 10
+
+  # --- Model config ---
   model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
-  # model_path: "threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
-  input_size: [256, 256]
+  frame_size: [640, 480] # width, height
+  model_input_size: [256, 256]
   min_score: 0.3
   exposure_time: 5000
+
+  # --- Pose estimation config---
+  # We assume the bottom edge of the camera is parallel with the plane of the floor.
+  # The robot coordinate system is defined below:
+  #
+  #         ^ +Y (left of robot)
+  #         |
+  # __________________
+  # |                |
+  # |                |
+  # |      <-\ +H    | --> +X (front of robot)
+  # |       _/       |
+  # |                |
+  # ------------------
+  
+  # Usually the width of the camera in pixels
+  FOV: 640
+  
+  # The camera's positive angle from the vertical (degrees)
+  lens_incline: 30 
+
+  # The height of the camera lens from the ground (cm)
+  lens_height: 20
+
+  # The lateral offset of the camera lens from the center of the robot (cm)
+  lens_lateral_offset: 0
+
+  # The forward offset of the camera lens from the center of the robot (cm)
+  lens_forward_offset: 0
+
+  # The angular offset of the camera lens from the robot's forward direction,
+  # where counterclockwise is positive (degrees)
+  lens_angular_offset: 0
+
+  # Diameter of the ping-pong ball (cm)
+  pong_ball_diameter: 4
 
 sensor_thread:
   frequency: 100

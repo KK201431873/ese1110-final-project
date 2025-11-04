@@ -1,7 +1,9 @@
 from utils.pi_thread import PiThread
 from threads.vision.camera_thread import CameraThread
 from enum import Enum
-import controller_serial_interface as controller
+
+# TODO: FIX THIS IMPORT
+# import controller_serial_interface as controller
 
 class State(Enum):
     SEARCH = 0
@@ -15,7 +17,8 @@ class ControllerThread(PiThread):
         self.STATE = State.SEARCH
 
     def _on_start_impl(self) -> None:
-        controller.stop_drive()
+        # controller.stop_drive()
+        pass
 
     def _loop_impl(self) -> None:
         match self.STATE:
@@ -23,8 +26,8 @@ class ControllerThread(PiThread):
             # The robot is searching for a ping-pong ball
             case State.SEARCH:
                 # Turn counterclockwise until found ball
-                controller.set_left_drive_speed(-0.5)
-                controller.set_right_drive_speed(0.5)
+                # controller.set_left_drive_speed(-0.5)
+                # controller.set_right_drive_speed(0.5)
                 # TODO: actually implement search logic
                 found_objects = CameraThread["detection.points"] or []
                 if len(found_objects) > 0:
@@ -41,4 +44,5 @@ class ControllerThread(PiThread):
                 pass
 
     def _on_shutdown_impl(self) -> None:
-        controller.stop_drive()
+        # controller.stop_drive()
+        pass

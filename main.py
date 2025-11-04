@@ -19,13 +19,13 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
     controller_thread_frequency = settings["controller_thread"]["frequency"]
 
     camera_thread = CameraThread(frequency=camera_thread_frequency)
-    sensor_thread = SensorThread(frequency=sensor_thread_frequency)
+    # sensor_thread = SensorThread(frequency=sensor_thread_frequency)
     controller_thread = ControllerThread(frequency=controller_thread_frequency)
 
     # --- Start threads ---
     print("[MAIN] Starting up robot...")
     camera_thread.start()
-    sensor_thread.start()
+    # sensor_thread.start()
     controller_thread.start()
 
     # --- Main loop ---
