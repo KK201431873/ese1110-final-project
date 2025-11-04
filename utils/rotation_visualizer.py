@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def euler_to_rotation_matrix(roll, pitch, yaw):

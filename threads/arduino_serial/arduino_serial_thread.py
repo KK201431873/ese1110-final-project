@@ -1,5 +1,5 @@
-from utils import ArduinoSerialInterface
-from utils import PiThread
+from utils.arduino_serial_interface import ArduinoSerialInterface
+from utils.pi_thread import PiThread
 from .arduino_serial_registers import serial_entries
 
 class ArduinoSerialThread(PiThread):

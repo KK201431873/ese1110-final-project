@@ -1,3 +1,2 @@
-# This file makes /vision a package
-# Can insert lines like "from .camera_thread import CameraThread" to make imports from main cleaner
-from .camera_thread import CameraThread
+# # This many imports makes the code slow
+# from .camera_thread import CameraThread

@@ -152,8 +152,8 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         # First loop logic
         if not self._alive:
             try:
-                self._on_start_impl()
                 self._alive = True
+                self._on_start_impl()
             except Exception as e:
                 message = f"Error on start: {e}"
                 if self._exit_on_error:

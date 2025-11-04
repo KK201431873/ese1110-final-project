@@ -1,21 +1,23 @@
-from threads.vision import CameraThread
-from threads.arduino_serial import ArduinoSerialThread
-from utils import PiThread
-import threading
-import time
-import cv2
+from threads.vision.camera_thread import CameraThread
+from threads.arduino_serial.arduino_serial_thread import ArduinoSerialThread
+from utils.pi_thread import PiThread
 import numpy as np
+import threading
+import cv2
+import time
 
-def main(with_watchdog: bool = True):
-    cv2.namedWindow("Ping Pong Detection", cv2.WINDOW_NORMAL)
+def main(with_watchdog: bool = True, show_camera: bool = False):
+    if show_camera:
+        from cv2 import namedWindow, imshow, waitKey, destroyAllWindows, WINDOW_NORMAL
+        cv2.namedWindow("Ping Pong Detection", cv2.WINDOW_NORMAL)
 
 
     camera_thread = CameraThread(frequency=10)
-    arduino_serial_thread = ArduinoSerialThread(frequency=100)
+    # arduino_serial_thread = ArduinoSerialThread(frequency=100)
 
     print("[MAIN] Starting up robot...")
     camera_thread.start()
-    arduino_serial_thread.start()
+    # arduino_serial_thread.start()
 
     try:
         while True:
@@ -27,24 +29,27 @@ def main(with_watchdog: bool = True):
                 print(f"[MAIN] Detected thread crash: {PiThread.get_crash_message()}")
                 crashed = True
             if crashed:
-                PiThread.kill_all()
+                while any((t.is_alive() or t.get_alive()) for t in threading.enumerate() if isinstance(t, PiThread)):
+                    PiThread.kill_all()
+                    time.sleep(0.1)
                 break
 
-            # Show CameraThread's annotated frame
-            annotated = CameraThread["detection.frame"]
-            if annotated is not None:
-                annotated = np.array(annotated)
-                cv2.imshow("Ping Pong Detection", annotated)
-            
-            print(CameraThread["detection.points"])
-
-            # time.sleep(0.1)
-            cv2.waitKey(20)
+            if show_camera:
+                # Show CameraThread's annotated frame
+                annotated = CameraThread["detection.frame"]
+                if annotated is not None:
+                    annotated = np.array(annotated)
+                    cv2.imshow("Ping Pong Detection", annotated)
+                print(CameraThread["detection.points"])
+                cv2.waitKey(20)
+            else:
+                time.sleep(0.1)
             
     except KeyboardInterrupt:
         PiThread.kill_all()
-        cv2.destroyAllWindows()
+        if show_camera:
+            cv2.destroyAllWindows()
         print("[MAIN] Shutting down robot...")
 
 if __name__ == "__main__":
-    main(with_watchdog=True)
+    main(with_watchdog=True, show_camera=True)

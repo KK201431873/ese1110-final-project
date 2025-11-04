@@ -1,4 +1,4 @@
-from utils import PiThread
+from utils.pi_thread import PiThread
 import threading
 import serial
 
