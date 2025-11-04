@@ -2,13 +2,39 @@
 from utils.pi_thread import PiThread
 from picamera2 import Picamera2
 import onnxruntime as ort
-import numpy as np
 import numpy.typing as npt
+import numpy as np
 import time
 import cv2
 
+def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
+    """
+    Resize image to new_shape while keeping aspect ratio, pad with `color`.
+    Returns: resized_padded_img, scale, (pad_left, pad_top)
+    This mirrors the typical YOLO letterbox behaviour.
+    """
+    orig_h, orig_w = img.shape[:2]
+    new_w, new_h = new_shape
+    # compute scale
+    scale = min(new_w / orig_w, new_h / orig_h)
+    # compute new unpadded size
+    resized_w, resized_h = int(round(orig_w * scale)), int(round(orig_h * scale))
+    # resize
+    resized = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
+    # compute padding
+    pad_w = new_w - resized_w
+    pad_h = new_h - resized_h
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
+                                borderType=cv2.BORDER_CONSTANT, value=color)
+    return padded, scale, (pad_left, pad_top)
+
 class CameraThread(PiThread):
     model_path: str = "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+    # model_path: str = "threads/vision/detection_models/pong_11-2-25_145AM_pruned50pct.onnx"
     input_size: tuple[int, int] = (256, 256)
     min_score: float = 0.65
 
@@ -51,11 +77,14 @@ class CameraThread(PiThread):
         outputs: npt.NDArray[np.float32] = self.session.run(
             [self.output_name], {self.input_name: img}
         )[0]  # type: ignore[assignment]
+        predictions = outputs.squeeze()     # (5, 1344)
+        predictions = predictions.T         # (1344, 5)
 
         # --- Parse outputs (depends on model export) ---
         # For YOLOv8 ONNX models, outputs shape is (1, N, 85)
         #   x, y, w, h, conf, class_scores[80]
-        boxes, confidences, class_ids = self._postprocess(outputs, frame.shape[:2])
+        orig_shape: tuple[int, int] = (int(frame.shape[0]), int(frame.shape[1]))
+        boxes, confidences, class_ids = self._postprocess(outputs, orig_shape)
 
         # Draw results
         annotated = frame.copy()
@@ -74,69 +103,104 @@ class CameraThread(PiThread):
         self["detection.frame"] = annotated
         self["detection.points"] = detection_points
 
+    def _preprocess(self, frame: np.ndarray) -> np.ndarray:
+        """
+        1) convert BGR->RGB (ultralytics uses RGB internally)
+        2) letterbox to self.input_size (preserve aspect)
+        3) normalize to 0..1 float32
+        4) CHW and batch dim
+        """
+        # convert BGR -> RGB
+        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    def _preprocess(self, img: np.ndarray) -> np.ndarray:
-        # Resize to 256x256 (your model’s expected input)
-        img_resized = cv2.resize(img, (256, 256))
+        # letterbox to model size — returns padded square and scale & pad offsets,
+        # store pad/scale for mapping back in postprocess (store as instance attrs)
+        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self.input_size)
+        # save for postprocess
+        self._last_pre_scale = scale
+        self._last_pre_pad = (pad_x, pad_y)
 
-        # Convert to float32 and normalize 0–1
-        img = img_resized.astype(np.float32) / 255.0
+        # normalize to 0..1
+        img = padded.astype(np.float32) / 255.0
 
-        # Convert HWC → CHW (channels first)
+        # HWC -> CHW
         img = np.transpose(img, (2, 0, 1))
 
-        # Add batch dimension
-        img = np.expand_dims(img, axis=0)
+        # add batch
+        img = np.expand_dims(img, axis=0).astype(np.float32)
 
         return img
 
     def _postprocess(self, outputs: np.ndarray, orig_shape: tuple[int, int]):
         """
-        Convert YOLOv8 ONNX outputs to usable boxes in the original image space.
-        Args:
-            outputs: raw model outputs (1, N, 85)
-            orig_shape: (height, width) of the original frame
+        Postprocess for model output layout (1,5,N) -> each detection [x,y,w,h,conf].
+        Uses last _last_pre_scale and _last_pre_pad to map back to original image coords.
         """
-        predictions = np.squeeze(outputs)  # (N, 85)
+        # outputs -> (1,5,N) or (5,N) depending on squeeze; normalize to (N,5)
+        preds = np.squeeze(outputs)
+        if preds.ndim == 2 and preds.shape[0] == 5:   # (5, N)
+            preds = preds.T                          # (N, 5)
+        elif preds.ndim == 3:  # maybe (1,5,N)
+            preds = preds.squeeze().T
+
         boxes, confidences, class_ids = [], [], []
 
-        # YOLO outputs (x, y, w, h) are in 256x256 space (since you resized)
-        input_w, input_h = 256, 256
+        input_w, input_h = self.input_size
         orig_h, orig_w = orig_shape
 
-        scale_x = orig_w / input_w
-        scale_y = orig_h / input_h
+        # get scale & pad saved during preprocess
+        scale = getattr(self, "_last_pre_scale", None)
+        pad_x, pad_y = getattr(self, "_last_pre_pad", (0, 0))
 
-        for pred in predictions:
-            x, y, w, h = pred[:4]
-            object_conf = pred[4]
-            class_scores = pred[5:]
-            cls_id = np.argmax(class_scores)
-            cls_conf = class_scores[cls_id]
-            score = object_conf * cls_conf
-            if score < self.min_score:
+        # If not available, fallback to center scaling (legacy)
+        if scale is None:
+            scale_x = orig_w / input_w
+            scale_y = orig_h / input_h
+            pad_x = pad_y = 0
+        else:
+            # padded coordinates are in padded (input_w,input_h) space
+            # to remove padding: (coord - pad) / scale -> original image px
+            inv_scale = 1.0 / scale
+            scale_x = inv_scale
+            scale_y = inv_scale
+
+        for x, y, w, h, conf in preds:
+            if conf < self.min_score:
                 continue
 
-            # Convert to corner coords and scale back to full-res image
-            x1 = int((x - w / 2) * scale_x)
-            y1 = int((y - h / 2) * scale_y)
-            x2 = int((x + w / 2) * scale_x)
-            y2 = int((y + h / 2) * scale_y)
+            # x,y,w,h are in padded model space (0..input_w/input_h)
+            # convert center-format padded -> remove pad -> scale back to original image
+            cx = (x - pad_x) * scale_x
+            cy = (y - pad_y) * scale_y
+            bw = w * scale_x
+            bh = h * scale_y
 
-            boxes.append([x1, y1, x2 - x1, y2 - y1])
-            confidences.append(float(score))
-            class_ids.append(int(cls_id))
+            x1 = int(round(cx - bw / 2))
+            y1 = int(round(cy - bh / 2))
+            x2 = int(round(cx + bw / 2))
+            y2 = int(round(cy + bh / 2))
 
-        # --- Apply NMS to remove duplicates ---
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, self.min_score, 0.45)
+            # clamp
+            x1 = max(0, min(orig_w - 1, x1))
+            y1 = max(0, min(orig_h - 1, y1))
+            x2 = max(0, min(orig_w - 1, x2))
+            y2 = max(0, min(orig_h - 1, y2))
+
+            boxes.append([x1, y1, x2 - x1, y2 - y1])  # for NMSBoxes
+            confidences.append(float(conf))
+            class_ids.append(0)
+
+        # Apply NMS
         final_boxes, final_confs, final_cls = [], [], []
-
-        if len(indices) > 0:
-            for i in indices.flatten():
-                x, y, w, h = boxes[i]
-                final_boxes.append((x, y, x + w, y + h))
-                final_confs.append(confidences[i])
-                final_cls.append(class_ids[i])
+        if boxes:
+            indices = cv2.dnn.NMSBoxes(boxes, confidences, self.min_score, 0.45)
+            if len(indices) > 0:
+                indices = np.array(indices).flatten()
+                for i in indices:
+                    x, y, w, h = boxes[i]
+                    final_boxes.append((x, y, x + w, y + h))
+                    final_confs.append(confidences[i])
+                    final_cls.append(class_ids[i])
 
         return final_boxes, final_confs, final_cls
 

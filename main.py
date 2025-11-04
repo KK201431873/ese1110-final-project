@@ -40,7 +40,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 if annotated is not None:
                     annotated = np.array(annotated)
                     cv2.imshow("Ping Pong Detection", annotated)
-                print(CameraThread["detection.points"])
+                # print(CameraThread["detection.points"])
                 cv2.waitKey(20)
             else:
                 time.sleep(0.1)
