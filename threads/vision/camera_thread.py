@@ -9,7 +9,7 @@ import cv2
 
 class CameraThread(PiThread):
     model_path: str = "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
-    input_size: tuple[int, int] = (640, 640)
+    input_size: tuple[int, int] = (256, 256)
     min_score: float = 0.65
 
     def _on_created_impl(self) -> None:
@@ -24,6 +24,10 @@ class CameraThread(PiThread):
         self.session = ort.InferenceSession(self.model_path, providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
+
+        # Get input size from model
+        input_shape = self.session.get_inputs()[0].shape  # e.g., [1, 3, 256, 256]
+        self.input_size = (input_shape[2], input_shape[3])
 
         # Detector class names
         self.class_names = ["ping-pong-ball"]  # update with your classes
@@ -51,7 +55,7 @@ class CameraThread(PiThread):
         # --- Parse outputs (depends on model export) ---
         # For YOLOv8 ONNX models, outputs shape is (1, N, 85)
         #   x, y, w, h, conf, class_scores[80]
-        boxes, confidences, class_ids = self._postprocess(outputs)
+        boxes, confidences, class_ids = self._postprocess(outputs, frame.shape[:2])
 
         # Draw results
         annotated = frame.copy()
@@ -86,13 +90,22 @@ class CameraThread(PiThread):
 
         return img
 
-    def _postprocess(self, outputs: np.ndarray):
+    def _postprocess(self, outputs: np.ndarray, orig_shape: tuple[int, int]):
         """
-        Parse YOLOv8 ONNX outputs into boxes, confidences, and class IDs.
-        Works with standard YOLOv8 ONNX export (1, N, 85).
+        Convert YOLOv8 ONNX outputs to usable boxes in the original image space.
+        Args:
+            outputs: raw model outputs (1, N, 85)
+            orig_shape: (height, width) of the original frame
         """
-        predictions = np.squeeze(outputs)
+        predictions = np.squeeze(outputs)  # (N, 85)
         boxes, confidences, class_ids = [], [], []
+
+        # YOLO outputs (x, y, w, h) are in 256x256 space (since you resized)
+        input_w, input_h = 256, 256
+        orig_h, orig_w = orig_shape
+
+        scale_x = orig_w / input_w
+        scale_y = orig_h / input_h
 
         for pred in predictions:
             x, y, w, h = pred[:4]
@@ -104,17 +117,28 @@ class CameraThread(PiThread):
             if score < self.min_score:
                 continue
 
-            # Convert from center x/y/w/h to x1, y1, x2, y2
-            x1 = int((x - w / 2))
-            y1 = int((y - h / 2))
-            x2 = int((x + w / 2))
-            y2 = int((y + h / 2))
+            # Convert to corner coords and scale back to full-res image
+            x1 = int((x - w / 2) * scale_x)
+            y1 = int((y - h / 2) * scale_y)
+            x2 = int((x + w / 2) * scale_x)
+            y2 = int((y + h / 2) * scale_y)
 
-            boxes.append((x1, y1, x2, y2))
+            boxes.append([x1, y1, x2 - x1, y2 - y1])
             confidences.append(float(score))
             class_ids.append(int(cls_id))
 
-        return boxes, confidences, class_ids
+        # --- Apply NMS to remove duplicates ---
+        indices = cv2.dnn.NMSBoxes(boxes, confidences, self.min_score, 0.45)
+        final_boxes, final_confs, final_cls = [], [], []
+
+        if len(indices) > 0:
+            for i in indices.flatten():
+                x, y, w, h = boxes[i]
+                final_boxes.append((x, y, x + w, y + h))
+                final_confs.append(confidences[i])
+                final_cls.append(class_ids[i])
+
+        return final_boxes, final_confs, final_cls
 
     def _on_shutdown_impl(self) -> None:
         self.picam2.stop()
