@@ -12,22 +12,25 @@ class ArduinoSerialThread(PiThread):
 
 
     def _loop_impl(self) -> None:
-        data = ArduinoSerialInterface.read_line(which_thread=self)
-        if data:
-            # Try to parse line
-            split_line = data.split(":", 1)
-            if len(split_line) == 2:
-                key, value = split_line
-                entry = serial_entries.get(key)
-                if entry:
-                    try:
-                        cast_value = entry.cast(value)
-                        self[key] = cast_value # Write to global data
-                        self.print(f"Received {key}: {self[key]} {type(self[key])}")
-                    except ValueError:
-                        self.print(f"Bad value for key {key}: {value}")
-            else:
-                self.print(f"Bad line: {data}") 
+        data_lines = ArduinoSerialInterface.read_lines(which_thread=self)
+        if not data_lines:
+            return
+        
+        # Parse data lines
+        for line in data_lines:
+            split_line = line.split(":", 1)
+            if len(split_line) != 2:
+                continue
+
+            key, value = split_line
+            entry = serial_entries.get(key)
+            if entry:
+                try:
+                    cast_value = entry.cast(value)
+                    self[key] = cast_value # Write to global data
+                    self.print(f"Received {key}: {self[key]} {type(self[key])}")
+                except ValueError:
+                    self.print(f"Bad value for key {key}: {value}")
     
 
     def _on_shutdown_impl(self) -> None:

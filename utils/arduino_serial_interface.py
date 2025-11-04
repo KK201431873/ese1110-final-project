@@ -31,8 +31,10 @@ class ArduinoSerialInterface():
                     )
 
     @classmethod
-    def read_line(cls, which_thread: type[PiThread] | PiThread) -> str:
-        """Thread-safe read a line from Arduino serial channel."""
+    def read_lines(cls, 
+                   which_thread: type[PiThread] | PiThread, 
+                   max_lines: int = 10) -> list[str]:
+        """Thread-safe read up to `max_lines` data lines from Arduino serial channel."""
         # Check serial channel status
         cls._ensure_serial(which_thread)
         if cls._ser is None:
@@ -40,17 +42,34 @@ class ArduinoSerialInterface():
                 which_thread, 
                 RuntimeError, f"Failed _ensure_serial() in read_line()"
             )
-            return ""
+            return []
         
         # Try reading data
+        lines: list[str] = []
         with cls._lock:
             try:
-                data = cls._ser.readline().decode(errors="ignore").strip()
+                # Non-blocking read: check how many bytes are available
+                while cls._ser.in_waiting > 0 and len(lines) < max_lines:
+                    raw = cls._ser.read(cls._ser.in_waiting or 1)
+                    if not raw:
+                        break
+                    
+                    # Split on newlines (handle partial reads)
+                    decoded = raw.decode(errors="ignore")
+                    split_lines = decoded.splitlines()
+                    lines.extend(split_lines)
+                    
+                    # Stop early if we already have enough lines
+                    if len(lines) >= max_lines:
+                        break
+
             except Exception as e:
                 cls._print_from(which_thread, f"Error reading from serial: {e}")
-                cls._ser = None  # force reinit on next read/write
-                data = ""
-            return data
+                cls._ser = None
+                return []
+            
+        # Trim to max_lines
+        return lines[:max_lines]
         
     @classmethod
     def write_line(cls, which_thread: type[PiThread] | PiThread, data: str) -> None:
