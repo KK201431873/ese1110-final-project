@@ -1,3 +1,23 @@
+main:
+  with_watchdog: true
+  show_camera: true
+
+
+controller_thread:
+  frequency: 60
+
+
+iot_thread:
+  frequency: 10
+  server_ws: "ws://ese.pongworks.dpdns.org/pi_stream"
+  resized_size: [320, 240]
+
+
+sensor_thread:
+  frequency: 100
+  max_lines_read_per_loop: 50
+
+
 camera_thread:
   frequency: 10
 
@@ -44,17 +64,7 @@ camera_thread:
   # Diameter of the ping-pong ball (cm)
   pong_ball_diameter: 4
 
-sensor_thread:
-  frequency: 100
-  max_lines_read_per_loop: 50
-
-controller_thread:
-  frequency: 60
 
 arduino_serial_interface:
   serial_port: "/dev/ttyACM0"
   baudrate: 115200
-
-main:
-  with_watchdog: true
-  show_camera: true
