@@ -84,7 +84,7 @@ class CameraThread(PiThread):
 
         # Draw results
         annotated = frame.copy()
-        detection_points = []
+        detection_points: list[tuple[float, float]] = []
         for (x1, y1, x2, y2), score, cls in zip(boxes, confidences, class_ids):
             if score < self._min_score:
                 continue

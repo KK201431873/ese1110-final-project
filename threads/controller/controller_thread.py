@@ -1,9 +1,8 @@
 from utils.pi_thread import PiThread
+from utils.load_settings import load_settings
 from threads.vision.camera_thread import CameraThread
 from enum import Enum
-
-# TODO: FIX THIS IMPORT
-# import controller_serial_interface as controller
+from . import controller_serial_interface as controller
 
 class State(Enum):
     SEARCH = 0
@@ -12,13 +11,23 @@ class State(Enum):
 
 class ControllerThread(PiThread):
     STATE: State
+    """Current state of the controller."""
+
+    target_relative_position: tuple[float, float]
+    """Relative position of the target ball."""
+
+    max_pickup_timeout: int
+    """Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)."""
 
     def _on_created_impl(self) -> None:
         self.STATE = State.SEARCH
 
+        # Load config
+        settings = load_settings()["controller_thread"]
+        self.max_pickup_timeout = settings["max_pickup_timeout"]
+
     def _on_start_impl(self) -> None:
-        # controller.stop_drive()
-        pass
+        controller.stop_drive()
 
     def _loop_impl(self) -> None:
         match self.STATE:
@@ -26,23 +35,39 @@ class ControllerThread(PiThread):
             # The robot is searching for a ping-pong ball
             case State.SEARCH:
                 # Turn counterclockwise until found ball
-                # controller.set_left_drive_speed(-0.5)
-                # controller.set_right_drive_speed(0.5)
-                # TODO: actually implement search logic
-                found_objects = CameraThread["detection.points"] or []
-                if len(found_objects) > 0:
+                controller.set_left_drive_speed(-0.5)
+                controller.set_right_drive_speed(0.5)
+                
+                # State change logic
+                closest_ball = self.get_closest_ball()
+                if closest_ball is not None:
                     self.STATE = State.PICKUP
+                    self.target_relative_position = closest_ball
 
             # The robot found a ping-pong ball, trying to pick it up now
             case State.PICKUP:
-                # TODO: Implement pickup logic
-                pass
+                closest_ball = self.get_closest_ball()
+                if closest_ball is None:
+                    self.STATE = State.SEARCH
+                    return
+                self.target_relative_position = closest_ball
+
 
             # The robot is transferring the ball to its bin
             case State.TRANSFER:
                 # TODO: Implement transfer logic
                 pass
 
+            # This should never happen
+            case _:
+                pass
+
     def _on_shutdown_impl(self) -> None:
-        # controller.stop_drive()
-        pass
+        controller.stop_drive()
+    
+    def get_closest_ball(self) -> tuple[float, float] | None:
+        found_objects: list[tuple[float, float]] = CameraThread["detection.points"] or []
+        if len(found_objects) == 0:
+            return None
+        closest_ball = min(found_objects, key=lambda p: p[0]**2 + p[1]**2)
+        return closest_ball

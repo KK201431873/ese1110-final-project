@@ -6,9 +6,13 @@ main:
 controller_thread:
   frequency: 60
 
+  # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)
+  max_pickup_timeout: 1000
+
 
 iot_thread:
   frequency: 10
+  pi_stream_password: "pongworks1110"
   server_ws: "ws://ese.pongworks.dpdns.org/pi_stream"
   resized_size: [320, 240]
 
