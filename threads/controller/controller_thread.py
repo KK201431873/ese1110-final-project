@@ -1,5 +1,6 @@
 from utils.pi_thread import PiThread
 from utils.load_settings import load_settings
+from utils.websocket_interface import WebSocketInterface
 from threads.vision.camera_thread import CameraThread
 from enum import Enum
 from . import controller_serial_interface as controller
@@ -37,6 +38,10 @@ class ControllerThread(PiThread):
 
     def _loop_impl(self) -> None:
         # self.print(f"State: {self.STATE}, Target: {self.target_relative_position}")
+
+        # Test send variables
+        WebSocketInterface.send_variable(self, "controller.ball.forward", str(self.target_relative_position[0]))
+        WebSocketInterface.send_variable(self, "controller.ball.left", str(self.target_relative_position[1]))
         match self.STATE:
 
             # The robot is searching for a ping-pong ball

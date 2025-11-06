@@ -13,7 +13,7 @@ from utils.pi_thread import PiThread
 import threading
 import time
 
-from utils.rotation_visualizer import update_orientation
+from __testing.rotation_visualizer import update_orientation
 import matplotlib.pyplot as plt
 import numpy as np
 

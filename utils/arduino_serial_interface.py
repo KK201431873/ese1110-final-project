@@ -1,5 +1,6 @@
-from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
+from utils.load_settings import load_settings
+from utils.debug import print_from, raise_error_from
 import threading
 import serial
 
@@ -30,7 +31,7 @@ class ArduinoSerialInterface():
                                             baudrate=cls._baudrate,
                                             timeout=1)
                 except serial.SerialException as e:
-                    cls._raise_error_from(
+                    raise_error_from(
                         which_thread, 
                         RuntimeError, f"Failed to open serial port {cls._serial_port}: {e}"
                     )
@@ -43,7 +44,7 @@ class ArduinoSerialInterface():
         # Check serial channel status
         cls._ensure_serial(which_thread)
         if cls._ser is None:
-            cls._raise_error_from(
+            raise_error_from(
                 which_thread, 
                 RuntimeError, f"Failed _ensure_serial() in read_line()"
             )
@@ -69,7 +70,7 @@ class ArduinoSerialInterface():
                         break
 
             except Exception as e:
-                cls._print_from(which_thread, f"Error reading from serial: {e}")
+                print_from(which_thread, f"Error reading from serial: {e}")
                 cls._ser = None
                 return []
             
@@ -82,7 +83,7 @@ class ArduinoSerialInterface():
         # Check serial channel status
         cls._ensure_serial(which_thread)
         if cls._ser is None:
-            cls._raise_error_from(
+            raise_error_from(
                 which_thread, 
                 RuntimeError, f"Failed _ensure_serial() in write_line()"
             )
@@ -93,32 +94,8 @@ class ArduinoSerialInterface():
             try:
                 cls._ser.write((data + "\n").encode())
             except Exception as e:
-                cls._print_from(which_thread, f"Error writing to serial: {e}")
+                print_from(which_thread, f"Error writing to serial: {e}")
                 cls._ser = None  # force reinit on next read/write
-    
-    @classmethod
-    def _print_from(cls, which_thread: type[PiThread] | PiThread | str, *values: object) -> None:
-        """Thread-safe print with thread name prefix."""
-        if isinstance(which_thread, str):
-            print(f"[{which_thread}]", *values)
-        elif isinstance(which_thread, PiThread):
-            which_thread.print(*values)
-        elif isinstance(which_thread, type) and issubclass(which_thread, PiThread):
-            which_thread.print_cls(*values)
-        else:
-            print("[ArduinoSerialInterface]", *values)
-
-    @classmethod
-    def _raise_error_from(cls, which_thread: type[PiThread] | PiThread | str, exc_type: type[Exception], message: str) -> None:
-        """Raise error with thread name prefix."""
-        if isinstance(which_thread, str):
-            raise exc_type(f"[{which_thread}] {message}")
-        elif isinstance(which_thread, PiThread):
-            which_thread.raise_error(exc_type, message)
-        elif isinstance(which_thread, type) and issubclass(which_thread, PiThread):
-            which_thread.raise_error_cls(exc_type, message)
-        else:
-            raise exc_type(f"[ArduinoSerialInterface] {message}")
     
     @classmethod
     def close(cls):
