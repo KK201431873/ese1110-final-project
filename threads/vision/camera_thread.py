@@ -20,8 +20,8 @@ exposure_time: int = settings["exposure_time"]
 
 # --- Pose estimation config---
 FOV: float = settings["FOV"]
-# fov_x: float = math.radians(settings["fov_x"])
-# fov_y: float = math.radians(settings["fov_y"])
+fov_x: float = math.radians(settings["fov_x"])
+fov_y: float = math.radians(settings["fov_y"])
 lens_incline: float = math.radians(settings["lens_incline"])
 lens_height: float = settings["lens_height"]
 lens_lateral_offset: float = settings["lens_lateral_offset"]
@@ -101,6 +101,8 @@ class CameraThread(PiThread):
                 continue
 
             real_x, real_y = detection_point
+            if real_x <= 0:
+                continue
 
             # show ball pos
             cv2.putText(annotated, f"({real_x:.1f}cm, {real_y:.1f}cm)", (x1, y2 + 20),
@@ -243,53 +245,50 @@ def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
                                 borderType=cv2.BORDER_CONSTANT, value=color)
     return padded, scale, (pad_left, pad_top)
 
-def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
-    """
-    Estimates the ping-pong ball's position relative to the robot given the 
-    midpoint of its bounding box's top edge. Returns (x, y) in cm, in accordance
-    with the robot's coordinate system defined in settings.yaml.
-    """
-    # Get pixel coordinates of midpoint of top edge of bounding box.
-    px, py = ball_point
-
-    # Get camera frame midpoint
-    mid_x, mid_y = frame_size[0]/2, frame_size[1]/2
-
-    # Back-solve for projected coordinates
-    c_px = (px - mid_x) / FOV;
-    c_py = (mid_y - py) / FOV;
-
-    print(c_px, c_py)
-
-    projectedX_numer = -c_py*math.sin(lens_incline) - math.cos(lens_incline);
-    projectedX_denom = c_py*math.cos(lens_incline) - math.sin(lens_incline);
-    if (projectedX_denom == 0): 
-        return None
-
-    height_above_ball = lens_height - pong_ball_diameter
-    projectedX = height_above_ball * projectedX_numer / projectedX_denom;
-    projectedY = -(projectedX*math.cos(lens_incline) + height_above_ball*math.sin(lens_incline)) * c_px;
-
-    return (projectedX, projectedY)
-
-# import math
-
 # def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
+#     """
+#     Estimates the ping-pong ball's position relative to the robot given the 
+#     midpoint of its bounding box's top edge. Returns (x, y) in cm, in accordance
+#     with the robot's coordinate system defined in settings.yaml.
+#     """
+#     # Get pixel coordinates of midpoint of top edge of bounding box.
 #     px, py = ball_point
-#     mid_x, mid_y = frame_size[0] / 2, frame_size[1] / 2
 
-#     # Convert pixel offsets to tangent of angles
-#     c_px = math.tan((px - mid_x) / frame_size[0] * fov_x)
-#     c_py = math.tan((mid_y - py) / frame_size[1] * fov_y)
+#     # Get camera frame midpoint
+#     mid_x, mid_y = frame_size[0]/2, frame_size[1]/2
 
-#     h = lens_height - pong_ball_diameter
+#     # Back-solve for projected coordinates
+#     c_px = (px - mid_x) / FOV;
+#     c_py = (mid_y - py) / FOV;
 
-#     # Compute ray intersection with ground
-#     down_angle = lens_incline + math.atan(c_py)
-#     if abs(math.tan(down_angle)) < 1e-6:
+#     projectedX_numer = -c_py*math.sin(lens_incline) - math.cos(lens_incline);
+#     projectedX_denom = c_py*math.cos(lens_incline) - math.sin(lens_incline);
+#     if (projectedX_denom == 0): 
 #         return None
 
-#     X_cam = h / math.tan(down_angle)
-#     Y_cam = X_cam * c_px
+#     height_above_ball = lens_height - pong_ball_diameter
+#     projectedX = height_above_ball * projectedX_numer / projectedX_denom;
+#     projectedY = -(projectedX*math.cos(lens_incline) + height_above_ball*math.sin(lens_incline)) * c_px;
 
-#     return (X_cam, Y_cam)
+#     return (projectedX, projectedY)
+
+
+def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
+    px, py = ball_point
+    mid_x, mid_y = frame_size[0] / 2, frame_size[1] / 2
+
+    # Convert pixel offsets to tangent of angles
+    c_px = math.tan((px - mid_x) / frame_size[0] * fov_x)
+    c_py = math.tan((py - mid_y) / frame_size[1] * fov_y)   # <-- flipped sign
+
+    h = lens_height - pong_ball_diameter
+
+    # Compute ray intersection with ground
+    down_angle = lens_incline + math.atan(c_py)
+    if abs(math.tan(down_angle)) < 1e-6:
+        return None
+
+    X_cam = h / math.tan(down_angle)
+    Y_cam = X_cam * c_px
+
+    return (X_cam, Y_cam)

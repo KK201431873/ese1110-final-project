@@ -3,6 +3,7 @@ from utils.load_settings import load_settings
 from threads.vision.camera_thread import CameraThread
 from enum import Enum
 from . import controller_serial_interface as controller
+import time
 
 class State(Enum):
     SEARCH = 0
@@ -19,6 +20,8 @@ class ControllerThread(PiThread):
     max_pickup_timeout: int
     """Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)."""
 
+    _last_detection_time: float
+
     def _on_created_impl(self) -> None:
         self.STATE = State.SEARCH
 
@@ -26,10 +29,14 @@ class ControllerThread(PiThread):
         settings = load_settings()["controller_thread"]
         self.max_pickup_timeout = settings["max_pickup_timeout"]
 
+        self.target_relative_position = (-1, -1)
+        self._last_detection_time = 0.0
+
     def _on_start_impl(self) -> None:
         controller.stop_drive()
 
     def _loop_impl(self) -> None:
+        # self.print(f"State: {self.STATE}, Target: {self.target_relative_position}")
         match self.STATE:
 
             # The robot is searching for a ping-pong ball
@@ -43,14 +50,19 @@ class ControllerThread(PiThread):
                 if closest_ball is not None:
                     self.STATE = State.PICKUP
                     self.target_relative_position = closest_ball
+                    self._last_detection_time = time.perf_counter()
+
 
             # The robot found a ping-pong ball, trying to pick it up now
             case State.PICKUP:
                 closest_ball = self.get_closest_ball()
+                time_since_last_detection = (time.perf_counter() - self._last_detection_time) * 1000
                 if closest_ball is None:
-                    self.STATE = State.SEARCH
+                    if time_since_last_detection > self.max_pickup_timeout:
+                        self.STATE = State.SEARCH
                     return
                 self.target_relative_position = closest_ball
+                self._last_detection_time = time.perf_counter()
 
 
             # The robot is transferring the ball to its bin

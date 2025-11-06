@@ -48,9 +48,11 @@ camera_thread:
   
   # Usually the width of the camera in pixels
   FOV: 640
+  fov_x: 66
+  fov_y: 41
   
   # The camera's positive angle from the vertical (degrees)
-  lens_incline: 30 
+  lens_incline: 21
 
   # The height of the camera lens from the ground (cm)
   lens_height: 20

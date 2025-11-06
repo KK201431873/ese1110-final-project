@@ -4,6 +4,8 @@ from threads.vision.camera_thread import CameraThread
 import websocket
 import cv2
 
+import time
+
 class IoTThread(PiThread):
     ws: websocket.WebSocket
     server_ws: str
@@ -38,6 +40,7 @@ class IoTThread(PiThread):
         except Exception as e:
             self.print("Failed to send frame.")
             self.connect_ws()
+        
 
     def _on_shutdown_impl(self) -> None:
         self.ws.close()
@@ -47,5 +50,6 @@ class IoTThread(PiThread):
             self.ws.close()
             self.ws.connect(self.server_ws)
             self.ws.send(self.pi_stream_password)
+            self.print(f"Reconnecting... pass: {self.pi_stream_password}")
         except Exception as e:
             self.print(f"Failed to connect to server.")

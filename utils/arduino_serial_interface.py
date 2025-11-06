@@ -21,7 +21,7 @@ class ArduinoSerialInterface():
     """Lock for accessing serial channel."""
 
     @classmethod
-    def _ensure_serial(cls, which_thread: type[PiThread] | PiThread) -> None:
+    def _ensure_serial(cls, which_thread: type[PiThread] | PiThread | str) -> None:
         """Ensure serial port is open."""
         with cls._lock:
             if cls._ser is None or not cls._ser.is_open:
@@ -37,7 +37,7 @@ class ArduinoSerialInterface():
 
     @classmethod
     def read_lines(cls, 
-                   which_thread: type[PiThread] | PiThread, 
+                   which_thread: type[PiThread] | PiThread | str, 
                    max_lines: int = 10) -> list[str]:
         """Thread-safe read up to `max_lines` data lines from Arduino serial channel."""
         # Check serial channel status
@@ -77,7 +77,7 @@ class ArduinoSerialInterface():
         return lines[:max_lines]
         
     @classmethod
-    def write_line(cls, which_thread: type[PiThread] | PiThread, data: str) -> None:
+    def write_line(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
         """Thread-safe write a line to Arduino serial channel."""
         # Check serial channel status
         cls._ensure_serial(which_thread)
@@ -97,9 +97,11 @@ class ArduinoSerialInterface():
                 cls._ser = None  # force reinit on next read/write
     
     @classmethod
-    def _print_from(cls, which_thread: type[PiThread] | PiThread, *values: object) -> None:
+    def _print_from(cls, which_thread: type[PiThread] | PiThread | str, *values: object) -> None:
         """Thread-safe print with thread name prefix."""
-        if isinstance(which_thread, PiThread):
+        if isinstance(which_thread, str):
+            print(f"[{which_thread}]", *values)
+        elif isinstance(which_thread, PiThread):
             which_thread.print(*values)
         elif isinstance(which_thread, type) and issubclass(which_thread, PiThread):
             which_thread.print_cls(*values)
@@ -107,9 +109,11 @@ class ArduinoSerialInterface():
             print("[ArduinoSerialInterface]", *values)
 
     @classmethod
-    def _raise_error_from(cls, which_thread: type[PiThread] | PiThread, exc_type: type[Exception], message: str) -> None:
+    def _raise_error_from(cls, which_thread: type[PiThread] | PiThread | str, exc_type: type[Exception], message: str) -> None:
         """Raise error with thread name prefix."""
-        if isinstance(which_thread, PiThread):
+        if isinstance(which_thread, str):
+            raise exc_type(f"[{which_thread}] {message}")
+        elif isinstance(which_thread, PiThread):
             which_thread.raise_error(exc_type, message)
         elif isinstance(which_thread, type) and issubclass(which_thread, PiThread):
             which_thread.raise_error_cls(exc_type, message)
