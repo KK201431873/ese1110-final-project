@@ -3,11 +3,48 @@ main:
   show_camera: true
 
 
+drive_config:
+  # Maximum linear velocity (m/s).
+  v_max: 0.8
+
+  # Maximum linear acceleration (m/s^2).
+  a_max: 1.2
+
+  # Encoder ticks per revolution of the wheel motor.
+  ticks_per_rev: 6528
+  
+  # (Wheel gear diameter) / (Motor gear diameter).
+  # Less than 1 means wheels rotate faster than the motor.
+  gear_ratio: 0.5
+
+  # Diameter of the wheels (meters).
+  wheel_diameter: 0.07
+
+  # Distance between the left and right wheels (meters).
+  wheel_base: 0.332
+
+
 controller_thread:
   frequency: 60
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)
   max_pickup_timeout: 1000
+
+  # --- RAMSETE controller config ---
+  # Responsiveness tuning parameter for the RAMSETE controller.
+  b: 2.0
+
+  # Damping coefficient for the RAMSETE controller.
+  zeta: 0.7
+
+  # Maximum time before forcing a new motion profile (seconds).
+  replanning_max_delay: 0.5
+
+  # Maximum movement of the ball before replanning (meters).
+  replanning_drift_threshold: 0.05 # 5cm
+  
+  # Lookahead time for the motion profile (seconds).
+  lookahead_time: 0.1
 
 
 iot_thread:
@@ -19,7 +56,13 @@ iot_thread:
 
 sensor_thread:
   frequency: 100
+
+  # Maximum number of lines to read from the serial interface per loop.
   max_lines_read_per_loop: 50
+  
+  # Filter coefficient between IMU yaw and motor encoder localization. Must be between 0 and 1.
+  # Values closer to 1 give more weight to the IMU.
+  alpha: 0.5
 
 
 camera_thread:
@@ -27,7 +70,7 @@ camera_thread:
 
   # --- Model config ---
   model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
-  frame_size: [640, 480] # width, height
+  frame_size: [640, 480]
   model_input_size: [256, 256]
   min_score: 0.3
   exposure_time: 5000

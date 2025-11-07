@@ -19,13 +19,17 @@ class SerialEntry:
     units: str = ""
 
 sensor_variables: dict[str, SerialEntry] = {
+    # Drive encoders
+    "sensor.encoder.left": SerialEntry(float, "Left drive encoder count", "ticks"),
+    "sensor.encoder.right": SerialEntry(float, "Right drive encoder count", "ticks"),
+
     # IMU
-    "imu.roll": SerialEntry(float, "IMU roll angle", "deg"),
-    "imu.pitch": SerialEntry(float, "IMU pitch angle", "deg"),
-    "imu.yaw": SerialEntry(float, "IMU yaw angle", "deg"),
+    "sensor.imu.roll": SerialEntry(float, "IMU roll angle", "deg"),
+    "sensor.imu.pitch": SerialEntry(float, "IMU pitch angle", "deg"),
+    "sensor.imu.yaw": SerialEntry(float, "IMU yaw angle", "deg"),
 
     # Debug
-    "debug": SerialEntry(str, "Debug message string", "")
+    "sensor.debug": SerialEntry(str, "Debug message string", "")
 }
 
 __all__ = ["sensor_variables", "SerialEntry"]
