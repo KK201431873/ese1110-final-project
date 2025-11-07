@@ -47,9 +47,11 @@ class SensorThread(PiThread):
     """Filter coefficient between IMU yaw and motor encoder localization."""
 
     def _on_created_impl(self) -> None:
+        # Instantiate at the origin, facing east
         self.ROBOT_X = 0.0
         self.ROBOT_Y = 0.0
         self.ROBOT_H = 0.0
+        self.broadcast_robot_pose()
 
         self._last_encoder_left = None
         self._last_encoder_right = None
@@ -92,9 +94,13 @@ class SensorThread(PiThread):
                     self.print(f"Bad value for key {key}: {value}")
         
         # Localization
-        self.do_tank_localization()
+        self.do_encoder_localization()
+        self.do_IMU_localization()
+
+        # Share robot pose
+        self.broadcast_robot_pose()
     
-    def do_tank_localization(self):
+    def do_encoder_localization(self) -> None:
         # Try reading values
         encoder_left = self["sensor.encoder.left"]
         encoder_right = self["sensor.encoder.right"]
@@ -128,6 +134,7 @@ class SensorThread(PiThread):
         self.ROBOT_Y += delta_distance * math.sin(self.ROBOT_H + delta_heading / 2)
         self.ROBOT_H = normalize_angle(self.ROBOT_H + delta_heading)
 
+    def do_IMU_localization(self) -> None:
         # Fuse with IMU yaw
         imu_yaw = self["sensor.imu.yaw"]
         if imu_yaw is not None:
@@ -138,6 +145,7 @@ class SensorThread(PiThread):
             y_bar = self._alpha * y_imu + (1 - self._alpha) * y_h
             self.ROBOT_H = math.atan2(y_bar, x_bar)
 
+    def broadcast_robot_pose(self) -> None:
         self["localization.x"] = self.ROBOT_X
         self["localization.y"] = self.ROBOT_Y
         self["localization.h"] = self.ROBOT_H

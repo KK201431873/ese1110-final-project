@@ -89,6 +89,28 @@ class WebSocketInterface():
                 return
     
     @classmethod
+    def send_minimap(cls, which_thread: type[PiThread] | PiThread | str, minimap: np.ndarray) -> None:
+        """Thread-safe send the minimap image to the WebSocket server."""
+        # Check websocket status
+        cls._ensure_socket(which_thread)
+        if cls._ws is None:
+            raise_error_from(
+                which_thread, 
+                RuntimeError, f"Failed _ensure_socket() in send_minimap()"
+            )
+            return
+        
+        # Try sending the frame
+        with cls._lock:
+            try:
+                _, jpeg = cv2.imencode(".jpg", minimap)
+                cls._ws.send(b"\x03" + jpeg.tobytes(), opcode=websocket.ABNF.OPCODE_BINARY)
+            except Exception as e:
+                print_from(which_thread, f"Error sending minimap: {e}")
+                cls._ws = None
+                return
+    
+    @classmethod
     def close(cls) -> None:
         """Close the WebSocket connection safely."""
         with cls._lock:

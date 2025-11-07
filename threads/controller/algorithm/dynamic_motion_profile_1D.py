@@ -1,5 +1,5 @@
 import math
-from .time_span import TimeSpan
+from time_span import TimeSpan
 
 class DynamicMotionProfile1D:
     """

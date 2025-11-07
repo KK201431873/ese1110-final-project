@@ -1,6 +1,8 @@
 # read camera images, do apriltag detection, run object detector
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
+from utils.vector2 import Vector2
+from threads.peripherals.sensor_thread import SensorThread
 from picamera2 import Picamera2
 import onnxruntime as ort
 import numpy.typing as npt
@@ -24,12 +26,16 @@ fov_x: float = math.radians(settings["fov_x"])
 fov_y: float = math.radians(settings["fov_y"])
 lens_incline: float = math.radians(settings["lens_incline"])
 lens_height: float = settings["lens_height"]
-lens_lateral_offset: float = settings["lens_lateral_offset"]
-lens_forward_offset: float = settings["lens_forward_offset"]
+lens_x_offset: float = settings["lens_x_offset"]
+lens_y_offset: float = settings["lens_y_offset"]
 lens_angular_offset: float = math.radians(settings["lens_angular_offset"])
 pong_ball_diameter: float = settings["pong_ball_diameter"]
 
 class CameraThread(PiThread):
+    ROBOT_X: float | None
+    ROBOT_Y: float | None
+    ROBOT_H: float | None
+    
     _model_path: str = model_path
     _model_input_size: tuple[int, int] = model_input_size
     _min_score: float = min_score
@@ -41,6 +47,7 @@ class CameraThread(PiThread):
             main={"format": "XRGB8888", "size": frame_size}
         )
         self.picam2.configure(preview_config)
+        self.picam2.start()
         
         # Initialize ONNX Runtime
         self.session = ort.InferenceSession(self._model_path, providers=["CPUExecutionProvider"])
@@ -53,22 +60,25 @@ class CameraThread(PiThread):
 
         # Detector class names
         self.class_names = ["ping-pong-ball"]  # update with your classes
-
-    def _on_start_impl(self) -> None:
-        self.picam2.start()
+        
+        # Warm up and set exposure
         time.sleep(1)
         self.picam2.set_controls({
             "AeEnable": False,
             "ExposureTime": exposure_time # microseconds
         })
+
+    def _on_start_impl(self) -> None:
         self.print("Alive!")
 
     def _loop_impl(self) -> None:
-        # Capture full-res frame
-        frame = self.picam2.capture_array()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        # Get robot pose
+        self.ROBOT_X = SensorThread["localization.x"]
+        self.ROBOT_Y = SensorThread["localization.y"]
+        self.ROBOT_H = SensorThread["localization.h"]
 
-        # Run inference
+        # Capture frame and run inference
+        frame = cv2.cvtColor(self.picam2.capture_array(), cv2.COLOR_BGRA2BGR)
         img = self._preprocess(frame)
         outputs: npt.NDArray[np.float32] = self.session.run(
             [self.output_name], {self.input_name: img}
@@ -84,33 +94,38 @@ class CameraThread(PiThread):
 
         # Draw results
         annotated = frame.copy()
-        detection_points: list[tuple[float, float]] = []
+        detection_points: list[Vector2] = []
         for (x1, y1, x2, y2), score, cls in zip(boxes, confidences, class_ids):
             if score < self._min_score:
                 continue
+            
+            # Calculate relative ball position
+            ball_px = (x1 + x2) / 2
+            ball_py = min(y1, y2)
+            relative_pos: Vector2 | None = self.relative_ball_position((ball_px, ball_py))
+            if relative_pos is None:
+                continue
+
+            real_x = relative_pos.x
+            real_y = relative_pos.y
+            if real_x <= 0:
+                continue
+
+            # Calculate absolute ball position
+            absolute_pos = self.absolute_ball_position(relative_pos)
+            if absolute_pos is not None:
+                detection_points.append(absolute_pos)
+
+            # Annotate frame
             color = (0, 255, 0)
             label = f"{self.class_names[int(cls)] if int(cls) < len(self.class_names) else 'obj'} {score:.2f}"
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             cv2.putText(annotated, label, (x1, y1 - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-            ball_px = (x1 + x2) / 2
-            ball_py = min(y1, y2)
-            detection_point = relative_ball_position((ball_px, ball_py))
-
-            if detection_point is None:
-                continue
-
-            real_x, real_y = detection_point
-            if real_x <= 0:
-                continue
-
-            # show ball pos
-            cv2.putText(annotated, f"({real_x:.1f}cm, {real_y:.1f}cm)", (x1, y2 + 20),
+            cv2.putText(annotated, f"({real_x:.1f}m, {real_y:.1f}m)", (x1, y2 + 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
             
             cv2.circle(annotated, (int(ball_px), int(ball_py)), 5, (0,0,0), cv2.FILLED)
-
-            detection_points.append(detection_point)
 
         # Share detection data
         self["detection.frame"] = annotated
@@ -128,7 +143,7 @@ class CameraThread(PiThread):
 
         # letterbox to model size — returns padded square and scale & pad offsets,
         # store pad/scale for mapping back in postprocess (store as instance attrs)
-        padded, scale, (pad_x, pad_y) = letterbox(img_rgb, new_shape=self._model_input_size)
+        padded, scale, (pad_x, pad_y) = self.letterbox(img_rgb, new_shape=self._model_input_size)
         # save for postprocess
         self._last_pre_scale = scale
         self._last_pre_pad = (pad_x, pad_y)
@@ -217,78 +232,73 @@ class CameraThread(PiThread):
 
         return final_boxes, final_confs, final_cls
 
+    def letterbox(self, img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
+        """
+        Resize image to new_shape while keeping aspect ratio, pad with `color`.
+        Returns: resized_padded_img, scale, (pad_left, pad_top)
+        This mirrors the typical YOLO letterbox behaviour.
+        """
+        orig_h, orig_w = img.shape[:2]
+        new_w, new_h = new_shape
+        # compute scale
+        scale = min(new_w / orig_w, new_h / orig_h)
+        # compute new unpadded size
+        resized_w, resized_h = int(round(orig_w * scale)), int(round(orig_h * scale))
+        # resize
+        resized = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
+        # compute padding
+        pad_w = new_w - resized_w
+        pad_h = new_h - resized_h
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
+                                    borderType=cv2.BORDER_CONSTANT, value=color)
+        return padded, scale, (pad_left, pad_top)
+
+    def relative_ball_position(self, ball_point: tuple[float, float]) -> Vector2 | None:
+        px, py = ball_point
+        mid_x, mid_y = frame_size[0] / 2, frame_size[1] / 2
+
+        # Convert pixel offsets to tangent of angles
+        c_px = math.tan((px - mid_x) / frame_size[0] * fov_x)
+        c_py = math.tan((py - mid_y) / frame_size[1] * fov_y)   # <-- flipped sign
+
+        h = lens_height - pong_ball_diameter
+
+        # Compute ray intersection with ground
+        down_angle = lens_incline + math.atan(c_py)
+        if abs(math.tan(down_angle)) < 1e-6:
+            return None
+
+        X_cam = h / math.tan(down_angle)
+        Y_cam = X_cam * c_px
+
+        return Vector2(X_cam, Y_cam)
+
+    def absolute_ball_position(self, relative_pos: Vector2) -> Vector2 | None:
+        if (self.ROBOT_X is None) or \
+            (self.ROBOT_Y is None) or \
+            (self.ROBOT_H is None):
+            return None
+
+        # Copy the relative position
+        absolute_pos: Vector2 = Vector2(relative_pos.x, relative_pos.y)
+
+        # Correct for camera angle
+        absolute_pos = absolute_pos.rotate(lens_angular_offset)
+
+        # Correct for camera translation
+        absolute_pos = absolute_pos + Vector2(lens_x_offset, lens_y_offset)
+
+        # Correct for robot heading
+        absolute_pos = absolute_pos.rotate(self.ROBOT_H)
+
+        # Correct for robot translation
+        absolute_pos = absolute_pos + Vector2(self.ROBOT_X, self.ROBOT_Y)
+
+        return absolute_pos
+
     def _on_shutdown_impl(self) -> None:
         self.picam2.stop()
-
-def letterbox(img: np.ndarray, new_shape=(256, 256), color=(114,114,114)):
-    """
-    Resize image to new_shape while keeping aspect ratio, pad with `color`.
-    Returns: resized_padded_img, scale, (pad_left, pad_top)
-    This mirrors the typical YOLO letterbox behaviour.
-    """
-    orig_h, orig_w = img.shape[:2]
-    new_w, new_h = new_shape
-    # compute scale
-    scale = min(new_w / orig_w, new_h / orig_h)
-    # compute new unpadded size
-    resized_w, resized_h = int(round(orig_w * scale)), int(round(orig_h * scale))
-    # resize
-    resized = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
-    # compute padding
-    pad_w = new_w - resized_w
-    pad_h = new_h - resized_h
-    pad_left = pad_w // 2
-    pad_right = pad_w - pad_left
-    pad_top = pad_h // 2
-    pad_bottom = pad_h - pad_top
-    padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right,
-                                borderType=cv2.BORDER_CONSTANT, value=color)
-    return padded, scale, (pad_left, pad_top)
-
-# def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
-#     """
-#     Estimates the ping-pong ball's position relative to the robot given the 
-#     midpoint of its bounding box's top edge. Returns (x, y) in cm, in accordance
-#     with the robot's coordinate system defined in settings.yaml.
-#     """
-#     # Get pixel coordinates of midpoint of top edge of bounding box.
-#     px, py = ball_point
-
-#     # Get camera frame midpoint
-#     mid_x, mid_y = frame_size[0]/2, frame_size[1]/2
-
-#     # Back-solve for projected coordinates
-#     c_px = (px - mid_x) / FOV;
-#     c_py = (mid_y - py) / FOV;
-
-#     projectedX_numer = -c_py*math.sin(lens_incline) - math.cos(lens_incline);
-#     projectedX_denom = c_py*math.cos(lens_incline) - math.sin(lens_incline);
-#     if (projectedX_denom == 0): 
-#         return None
-
-#     height_above_ball = lens_height - pong_ball_diameter
-#     projectedX = height_above_ball * projectedX_numer / projectedX_denom;
-#     projectedY = -(projectedX*math.cos(lens_incline) + height_above_ball*math.sin(lens_incline)) * c_px;
-
-#     return (projectedX, projectedY)
-
-
-def relative_ball_position(ball_point: tuple[float, float]) -> tuple[float, float] | None:
-    px, py = ball_point
-    mid_x, mid_y = frame_size[0] / 2, frame_size[1] / 2
-
-    # Convert pixel offsets to tangent of angles
-    c_px = math.tan((px - mid_x) / frame_size[0] * fov_x)
-    c_py = math.tan((py - mid_y) / frame_size[1] * fov_y)   # <-- flipped sign
-
-    h = lens_height - pong_ball_diameter
-
-    # Compute ray intersection with ground
-    down_angle = lens_incline + math.atan(c_py)
-    if abs(math.tan(down_angle)) < 1e-6:
-        return None
-
-    X_cam = h / math.tan(down_angle)
-    Y_cam = X_cam * c_px
-
-    return (X_cam, Y_cam)

@@ -91,27 +91,33 @@ camera_thread:
   
   # Usually the width of the camera in pixels
   FOV: 640
+
+  # Horizontal FOV (degrees)
   fov_x: 66
+
+  # Vertical FOV (degrees)
   fov_y: 41
   
   # The camera's positive angle from the vertical (degrees)
-  lens_incline: 21
+  lens_incline: 23
 
-  # The height of the camera lens from the ground (cm)
-  lens_height: 20
+  # The height of the camera lens from the ground (m)
+  lens_height: 0.20
 
-  # The lateral offset of the camera lens from the center of the robot (cm)
-  lens_lateral_offset: 0
+  # The forward offset of the camera lens from the center of the robot (m)
+  # When facing forward, the +x direction is forward
+  lens_x_offset: 0.00
 
-  # The forward offset of the camera lens from the center of the robot (cm)
-  lens_forward_offset: 0
+  # The lateral offset of the camera lens from the center of the robot (m)
+  # When facing forward, the +y direction is to the left
+  lens_y_offset: 0.00
 
-  # The angular offset of the camera lens from the robot's forward direction,
-  # where counterclockwise is positive (degrees)
+  # The angular offset of the camera lens from the robot's forward direction (degrees)
+  # When facing forward, the angular offset is 0 and counter-clockwise is positive
   lens_angular_offset: 0
 
-  # Diameter of the ping-pong ball (cm)
-  pong_ball_diameter: 4
+  # Diameter of the ping-pong ball (m)
+  pong_ball_diameter: 0.04
 
 
 arduino_serial_interface:

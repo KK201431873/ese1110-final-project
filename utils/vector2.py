@@ -1,3 +1,5 @@
+import math
+
 class Vector2:
     """2D vector class with basic operations."""
 
@@ -28,3 +30,12 @@ class Vector2:
         if n == 0:
             return Vector2(0, 0)
         return self / n
+    
+    def rotate(self, radians: float) -> "Vector2":
+        """Return a Vector2 rotated counterclockwise by the given angle."""
+        cos = math.cos(radians)
+        sin = math.sin(radians)
+        return Vector2(
+            self.x * cos - self.y * sin,
+            self.x * sin + self.y * cos
+        )

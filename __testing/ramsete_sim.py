@@ -8,7 +8,7 @@ module_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', ''))
 # Add the directory to sys.path
 sys.path.append(module_dir)
 
-from threads.controller.algorithm.vector2 import Vector2
+from utils.vector2 import Vector2
 from threads.controller.algorithm.ramsete_controller import RAMSETEController
 import matplotlib.pyplot as plt
 import math
