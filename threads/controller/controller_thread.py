@@ -3,7 +3,7 @@ from utils.load_settings import load_settings
 from utils.websocket_interface import WebSocketInterface
 from threads.vision.camera_thread import CameraThread
 from threads.peripherals.sensor_thread import SensorThread
-from algorithm.ramsete_controller import RAMSETEController
+from .algorithm.ramsete_controller import RAMSETEController
 from utils.vector2 import Vector2
 from utils.pose2 import Pose2
 from . import controller_serial_interface as controller
@@ -80,9 +80,9 @@ class ControllerThread(PiThread):
         # self.print(f"State: {self.STATE}, Target: {self.target_relative_position}")
 
         # Test send variables
-        if self._target_absolute_position is not None:
-            WebSocketInterface.send_variable(self, "controller.ball.x", str(self._target_absolute_position.x))
-            WebSocketInterface.send_variable(self, "controller.ball.y", str(self._target_absolute_position.y))
+        # if self._target_absolute_position is not None:
+        #     WebSocketInterface.send_variable(self, "controller.ball.x", str(self._target_absolute_position.x))
+        #     WebSocketInterface.send_variable(self, "controller.ball.y", str(self._target_absolute_position.y))
 
         # --- State machine logic ---
         match self.STATE:
@@ -90,12 +90,12 @@ class ControllerThread(PiThread):
             # The robot is searching for a ping-pong ball
             case State.SEARCH:
                 # Turn counterclockwise until found ball
-                controller.set_left_drive_power(-0.25)
-                controller.set_right_drive_power(0.25)
+                # controller.set_left_drive_power(-0.25)
+                # controller.set_right_drive_power(0.25)
 
                 # Raise and stop intake
-                controller.set_intake_position(90)
-                controller.set_intake_power(0.0)
+                # controller.set_intake_position(90)
+                # controller.set_intake_power(0.0)
                 
                 # Go PICKUP if a ball is detected
                 closest_ball = self.get_closest_ball()
@@ -108,8 +108,8 @@ class ControllerThread(PiThread):
             # The robot found a ping-pong ball, trying to pick it up now
             case State.PICKUP:
                 # Lower and run intake
-                controller.set_intake_position(45)
-                controller.set_intake_power(1.0)
+                # controller.set_intake_position(45)
+                # controller.set_intake_power(1.0)
 
                 # Go SEARCH if no ball detected for a while
                 closest_ball = self.get_closest_ball()
@@ -136,10 +136,12 @@ class ControllerThread(PiThread):
                     left_power = left / self._POWER_TO_SPEED
                     right_power = right / self._POWER_TO_SPEED
 
-                    controller.set_left_drive_power(left_power)
-                    controller.set_right_drive_power(right_power)
+                    # controller.set_left_drive_power(left_power)
+                    # controller.set_right_drive_power(right_power)
                 else:
-                    controller.stop_drive()
+                    # controller.stop_drive()
+
+                    pass
 
 
             # The robot is transferring the ball to its bin
@@ -150,43 +152,6 @@ class ControllerThread(PiThread):
             # This should never happen
             case _:
                 pass
-        
-        # --- Generate minimap ---
-        self.generate_minimap()
-
-    def generate_minimap(self) -> None:
-        """
-        Draw a minimap showing the robot heading and the nearest ping-pong ball.
-        """
-        robot_heading = SensorThread["localization.h"]
-        if robot_heading is None:
-            return
-
-        # --- Map size ---
-        width, height = 300, 200  # you can adjust this later dynamically
-
-        # Create a blank dark background
-        minimap = np.zeros((height, width, 3), dtype=np.uint8)
-        minimap[:] = (20, 20, 20)
-
-        # --- Draw robot in center ---
-        center = (width // 2, height // 2)
-        cv2.circle(minimap, center, 10, (0, 255, 255), -1)
-
-        # Draw heading line
-        heading_length = 20
-        end_x = int(center[0] + heading_length * np.cos(robot_heading))
-        end_y = int(center[1] - heading_length * np.sin(robot_heading))
-        cv2.line(minimap, center, (end_x, end_y), (0, 255, 255), 2)
-
-        # --- Draw ball (if detected) ---
-        if self._target_absolute_position:
-            bx = int(center[0] + self._target_absolute_position.y)  # left-right offset
-            by = int(center[1] - self._target_absolute_position.x)  # forward offset
-            cv2.circle(minimap, (bx, by), 6, (0, 165, 255), -1)
-
-        # Send to WebSocket
-        WebSocketInterface.send_minimap(self, minimap)
 
     def _on_shutdown_impl(self) -> None:
         controller.stop_drive()

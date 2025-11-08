@@ -20,8 +20,8 @@ class SerialEntry:
 
 sensor_variables: dict[str, SerialEntry] = {
     # Drive encoders
-    "sensor.encoder.left": SerialEntry(float, "Left drive encoder count", "ticks"),
-    "sensor.encoder.right": SerialEntry(float, "Right drive encoder count", "ticks"),
+    "sensor.encoder.left": SerialEntry(int, "Left drive encoder count", "ticks"),
+    "sensor.encoder.right": SerialEntry(int, "Right drive encoder count", "ticks"),
 
     # IMU
     "sensor.imu.roll": SerialEntry(float, "IMU roll angle", "deg"),

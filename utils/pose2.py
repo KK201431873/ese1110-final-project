@@ -1,4 +1,4 @@
-from vector2 import Vector2
+from .vector2 import Vector2
 
 class Pose2:
     """2D Vector and heading angle to describe planar robot pose."""

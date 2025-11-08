@@ -1,4 +1,5 @@
 from utils.arduino_serial_interface import ArduinoSerialInterface
+from utils.websocket_interface import WebSocketInterface
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 from utils.vector2 import Vector2
@@ -21,6 +22,9 @@ class SensorThread(PiThread):
     _max_lines_read_per_loop: int
     """Maximum number of lines to read from the serial interface per loop."""
 
+    _alpha: float
+    """Filter coefficient between IMU yaw and motor encoder localization."""
+
     _last_encoder_left: float | None
     """Last recorded value of the left encoder in ticks."""
 
@@ -39,9 +43,6 @@ class SensorThread(PiThread):
     _wheel_base: float
     """Distance between the left and right wheels (meters)."""
 
-    _alpha: float
-    """Filter coefficient between IMU yaw and motor encoder localization."""
-
     def _on_created_impl(self) -> None:
         # Instantiate at the origin, facing east
         self.ROBOT_POSE = Pose2(
@@ -57,6 +58,7 @@ class SensorThread(PiThread):
         settings = load_settings()
         sensor_settings = settings["sensor_thread"]
         self._max_lines_read_per_loop = sensor_settings["max_lines_read_per_loop"]
+        self._alpha = sensor_settings["alpha"]
 
         # Load drive config
         drive_settings = settings["drive_config"]
@@ -64,13 +66,13 @@ class SensorThread(PiThread):
         self._gear_ratio = drive_settings["gear_ratio"]
         self._wheel_diameter = drive_settings["wheel_diameter"]
         self._wheel_base = drive_settings["wheel_base"]
-        self._alpha = drive_settings["alpha"]
 
     def _on_start_impl(self) -> None:
         self.print("Alive!")
 
     def _loop_impl(self) -> None:
         data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=self._max_lines_read_per_loop)
+        self.print(f"Read {len(data_lines)} lines from serial")
         if not data_lines:
             return
         
@@ -86,13 +88,14 @@ class SensorThread(PiThread):
                 try:
                     cast_value = entry.cast(value)
                     self[key] = cast_value # Write to global data
+                    # WebSocketInterface.send_variable(self, key, value)
                     # self.print(f"Received {key}: {self[key]} {type(self[key])}")
                 except ValueError:
                     self.print(f"Bad value for key {key}: {value}")
         
         # Localization
         self.do_encoder_localization()
-        self.do_IMU_localization()
+        # self.do_IMU_localization()
 
         # Share robot pose
         self.broadcast_robot_pose()
@@ -144,6 +147,8 @@ class SensorThread(PiThread):
         # Fuse with IMU yaw
         imu_yaw = self["sensor.imu.yaw"]
         if imu_yaw is not None:
+            imu_yaw = math.radians(imu_yaw)
+
             old_X = self.ROBOT_POSE.COORDS.x
             old_Y = self.ROBOT_POSE.COORDS.y
             old_H = self.ROBOT_POSE.h
@@ -162,6 +167,9 @@ class SensorThread(PiThread):
 
     def broadcast_robot_pose(self) -> None:
         self["localization.pose"] = self.ROBOT_POSE
+        WebSocketInterface.send_variable(self, "localization.pose.x", str(round(self.ROBOT_POSE.COORDS.x, 3)))
+        WebSocketInterface.send_variable(self, "localization.pose.y", str(round(self.ROBOT_POSE.COORDS.y, 3)))
+        WebSocketInterface.send_variable(self, "localization.pose.h", str(round(math.degrees(self.ROBOT_POSE.h), 2)))
 
     def _on_shutdown_impl(self) -> None:
         ArduinoSerialInterface.close()

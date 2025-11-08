@@ -25,7 +25,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
     controller_thread = ControllerThread(frequency=controller_thread_frequency)
     iot_camera_feed_thread = IoTCameraFeedThread(frequency=iot_camera_feed_thread_frequency)
     iot_minimap_thread = IoTMinimapThread(frequency=iot_minimap_thread_frequency)
-    # sensor_thread = SensorThread(frequency=sensor_thread_frequency)
+    sensor_thread = SensorThread(frequency=sensor_thread_frequency)
     camera_thread = CameraThread(frequency=camera_thread_frequency)
 
     # --- Start threads ---
@@ -33,7 +33,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
     controller_thread.start()
     iot_camera_feed_thread.start()
     iot_minimap_thread.start()
-    # sensor_thread.start()
+    sensor_thread.start()
     camera_thread.start()
 
     # --- Main loop ---

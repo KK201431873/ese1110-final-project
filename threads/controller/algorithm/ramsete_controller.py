@@ -1,4 +1,4 @@
-from dynamic_motion_profile_2D import DynamicMotionProfile2D
+from .dynamic_motion_profile_2D import DynamicMotionProfile2D
 from utils.vector2 import Vector2
 from utils.pose2 import Pose2
 import math

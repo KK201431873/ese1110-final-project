@@ -270,7 +270,7 @@ class CameraThread(PiThread):
             return None
 
         X_cam = h / math.tan(down_angle)
-        Y_cam = X_cam * c_px
+        Y_cam = -X_cam * c_px
 
         return Vector2(X_cam, Y_cam)
 

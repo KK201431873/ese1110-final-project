@@ -1,4 +1,4 @@
-from dynamic_motion_profile_1D import DynamicMotionProfile1D
+from .dynamic_motion_profile_1D import DynamicMotionProfile1D
 from utils.vector2 import Vector2
 
 class DynamicMotionProfile2D:
