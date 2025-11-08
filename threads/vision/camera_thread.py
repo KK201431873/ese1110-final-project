@@ -2,6 +2,7 @@
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 from utils.vector2 import Vector2
+from utils.pose2 import Pose2
 from threads.peripherals.sensor_thread import SensorThread
 from picamera2 import Picamera2
 import onnxruntime as ort
@@ -32,9 +33,7 @@ lens_angular_offset: float = math.radians(settings["lens_angular_offset"])
 pong_ball_diameter: float = settings["pong_ball_diameter"]
 
 class CameraThread(PiThread):
-    ROBOT_X: float | None
-    ROBOT_Y: float | None
-    ROBOT_H: float | None
+    ROBOT_POSE: Pose2 | None
     
     _model_path: str = model_path
     _model_input_size: tuple[int, int] = model_input_size
@@ -73,9 +72,7 @@ class CameraThread(PiThread):
 
     def _loop_impl(self) -> None:
         # Get robot pose
-        self.ROBOT_X = SensorThread["localization.x"]
-        self.ROBOT_Y = SensorThread["localization.y"]
-        self.ROBOT_H = SensorThread["localization.h"]
+        self.ROBOT_POSE = SensorThread["localization.pose"]
 
         # Capture frame and run inference
         frame = cv2.cvtColor(self.picam2.capture_array(), cv2.COLOR_BGRA2BGR)
@@ -278,9 +275,7 @@ class CameraThread(PiThread):
         return Vector2(X_cam, Y_cam)
 
     def absolute_ball_position(self, relative_pos: Vector2) -> Vector2 | None:
-        if (self.ROBOT_X is None) or \
-            (self.ROBOT_Y is None) or \
-            (self.ROBOT_H is None):
+        if self.ROBOT_POSE is None:
             return None
 
         # Copy the relative position
@@ -293,10 +288,10 @@ class CameraThread(PiThread):
         absolute_pos = absolute_pos + Vector2(lens_x_offset, lens_y_offset)
 
         # Correct for robot heading
-        absolute_pos = absolute_pos.rotate(self.ROBOT_H)
+        absolute_pos = absolute_pos.rotate(self.ROBOT_POSE.h)
 
         # Correct for robot translation
-        absolute_pos = absolute_pos + Vector2(self.ROBOT_X, self.ROBOT_Y)
+        absolute_pos = absolute_pos + self.ROBOT_POSE.COORDS
 
         return absolute_pos
 

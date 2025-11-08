@@ -31,7 +31,7 @@ trajectory = [(pos.x, pos.y)]
 
 for step in range(10000):
     # Compute motor speeds
-    left_rps, right_rps = controller.update_relative(
+    left_rps, right_rps = controller.update_controller(
         ball_pos=Vector2(
             (target.x - pos.x)*math.cos(-theta) - (target.y - pos.y)*math.sin(-theta),
             (target.x - pos.x)*math.sin(-theta) + (target.y - pos.y)*math.cos(-theta)

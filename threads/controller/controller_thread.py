@@ -5,6 +5,7 @@ from threads.vision.camera_thread import CameraThread
 from threads.peripherals.sensor_thread import SensorThread
 from algorithm.ramsete_controller import RAMSETEController
 from utils.vector2 import Vector2
+from utils.pose2 import Pose2
 from . import controller_serial_interface as controller
 from enum import Enum
 import numpy as np
@@ -17,10 +18,12 @@ class State(Enum):
     TRANSFER = 2
 
 class ControllerThread(PiThread):
+    ROBOT_POSE: Pose2 | None
+
     STATE: State
     """Current state of the controller."""
 
-    _target_relative_position: tuple[float, float] | None
+    _target_absolute_position: Vector2 | None
     """Relative position of the target ball."""
 
     _max_pickup_timeout: int
@@ -38,9 +41,6 @@ class ControllerThread(PiThread):
     _POWER_TO_SPEED: float
     """Conversion factor from power to speed."""
 
-    _CM_TO_METERS: float = 0.01
-    """Conversion factor from centimeters to meters."""
-
     _ramsete_controller: RAMSETEController
     """Instance of the RAMSETE controller."""
 
@@ -49,7 +49,7 @@ class ControllerThread(PiThread):
 
         # Load config
         settings = load_settings()
-        self._target_relative_position = (-1, -1)
+        self._target_absolute_position = None
         self._max_pickup_timeout = settings["controller_thread"]["max_pickup_timeout"]
         self._last_detection_time = 0.0
         self._left_power = 0.0
@@ -74,12 +74,15 @@ class ControllerThread(PiThread):
         self.print("Alive!")
 
     def _loop_impl(self) -> None:
+        # Get robot pose
+        self.ROBOT_POSE = SensorThread["localization.pose"]
+        
         # self.print(f"State: {self.STATE}, Target: {self.target_relative_position}")
 
         # Test send variables
-        if self._target_relative_position is not None:
-            WebSocketInterface.send_variable(self, "controller.ball.forward", str(self._target_relative_position[0]))
-            WebSocketInterface.send_variable(self, "controller.ball.left", str(self._target_relative_position[1]))
+        if self._target_absolute_position is not None:
+            WebSocketInterface.send_variable(self, "controller.ball.x", str(self._target_absolute_position.x))
+            WebSocketInterface.send_variable(self, "controller.ball.y", str(self._target_absolute_position.y))
 
         # --- State machine logic ---
         match self.STATE:
@@ -96,7 +99,7 @@ class ControllerThread(PiThread):
                 
                 # Go PICKUP if a ball is detected
                 closest_ball = self.get_closest_ball()
-                self._target_relative_position = closest_ball
+                self._target_absolute_position = closest_ball
                 if closest_ball is not None:
                     self.STATE = State.PICKUP
                     self._last_detection_time = time.perf_counter()
@@ -113,26 +116,30 @@ class ControllerThread(PiThread):
                 time_since_last_detection = (time.perf_counter() - self._last_detection_time) * 1000
                 if closest_ball is None:
                     if time_since_last_detection > self._max_pickup_timeout:
-                        self._target_relative_position = None
+                        self._target_absolute_position = None
                         self.STATE = State.SEARCH
                     return
-                self._target_relative_position = closest_ball
+                self._target_absolute_position = closest_ball
                 self._last_detection_time = time.perf_counter()
 
-                # Run RAMSETE (_target_relative_position is not None)
-                tx = self._CM_TO_METERS * self._target_relative_position[0]
-                ty = self._CM_TO_METERS * self._target_relative_position[1]
-                v0 = self._POWER_TO_SPEED * (self._left_power + self._right_power) / 2
-                left, right = self._ramsete_controller.update_relative(
-                    ball_pos = Vector2(tx, ty),
-                    current_vel = Vector2(v0, 0)
-                )
+                # Run RAMSETE 
+                if self.ROBOT_POSE is not None:
 
-                left_power = left / self._POWER_TO_SPEED
-                right_power = right / self._POWER_TO_SPEED
+                    v0 = self._POWER_TO_SPEED * (self._left_power + self._right_power) / 2
 
-                controller.set_left_drive_power(left_power)
-                controller.set_right_drive_power(right_power)
+                    left, right = self._ramsete_controller.update_controller(
+                        ball_pos = self._target_absolute_position,
+                        robot_pose = self.ROBOT_POSE,
+                        current_vel = Vector2(0, 0) # TODO: Estimate velocity and plug in here
+                    )
+
+                    left_power = left / self._POWER_TO_SPEED
+                    right_power = right / self._POWER_TO_SPEED
+
+                    controller.set_left_drive_power(left_power)
+                    controller.set_right_drive_power(right_power)
+                else:
+                    controller.stop_drive()
 
 
             # The robot is transferring the ball to its bin
@@ -173,9 +180,9 @@ class ControllerThread(PiThread):
         cv2.line(minimap, center, (end_x, end_y), (0, 255, 255), 2)
 
         # --- Draw ball (if detected) ---
-        if self._target_relative_position:
-            bx = int(center[0] + self._target_relative_position[1])  # left-right offset
-            by = int(center[1] - self._target_relative_position[0])  # forward offset
+        if self._target_absolute_position:
+            bx = int(center[0] + self._target_absolute_position.y)  # left-right offset
+            by = int(center[1] - self._target_absolute_position.x)  # forward offset
             cv2.circle(minimap, (bx, by), 6, (0, 165, 255), -1)
 
         # Send to WebSocket
@@ -184,9 +191,9 @@ class ControllerThread(PiThread):
     def _on_shutdown_impl(self) -> None:
         controller.stop_drive()
     
-    def get_closest_ball(self) -> tuple[float, float] | None:
-        found_objects: list[tuple[float, float]] = CameraThread["detection.points"] or []
+    def get_closest_ball(self) -> Vector2 | None:
+        found_objects: list[Vector2] = CameraThread["detection.points"] or []
         if len(found_objects) == 0:
             return None
-        closest_ball = min(found_objects, key=lambda p: p[0]**2 + p[1]**2)
+        closest_ball = min(found_objects, key=lambda p: p.norm())
         return closest_ball

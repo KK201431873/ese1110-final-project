@@ -3,6 +3,22 @@ main:
   show_camera: true
 
 
+arduino_serial_interface:
+  # Path to the USB serial port 
+  serial_port: "/dev/ttyACM0"
+
+  # Baudrate, must be same as Arduino's
+  baudrate: 115200
+
+
+websocket_interface:
+  # WebSocket URL to send data to
+  server_ws: "ws://ese.pongworks.dpdns.org/pi_stream"
+
+  # Entry password set by the WebSocket endpoint
+  pi_stream_password: "pongworks1110"
+
+
 drive_config:
   # Maximum linear velocity (m/s).
   v_max: 0.8
@@ -47,11 +63,31 @@ controller_thread:
   lookahead_time: 0.1
 
 
-iot_thread:
+iot_camera_feed_thread:
   frequency: 10
-  pi_stream_password: "pongworks1110"
-  server_ws: "ws://ese.pongworks.dpdns.org/pi_stream"
+
+  # Dimensions of the video feed frame, in pixels
   resized_size: [320, 240]
+
+
+iot_minimap_thread:
+  frequency: 30
+
+  # Colors
+  BG_COLOR: [20, 20, 20]
+  MINOR_COLOR: [40, 40, 40]
+  MAJOR_COLOR: [70, 70, 70]
+  FAR_DETECTION_COLOR: [93, 206, 250]
+  BEST_DETECTION_COLOR: [50, 129, 239]
+
+  # Dimensions of the minimap image, in pixels
+  minimap_size: [640, 320]
+
+  # Physical width represented by the minimap
+  width_meters: 4.0 
+
+  # Number of equally-spaced grid lines drawn per meter 
+  meter_subdivisions: 4
 
 
 sensor_thread:
@@ -69,10 +105,19 @@ camera_thread:
   frequency: 10
 
   # --- Model config ---
+  # Path to the YOLO model
   model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+
+  # Camera output frame size, in pixels
   frame_size: [640, 480]
+
+  # Model input frame size, in pixels
   model_input_size: [256, 256]
+
+  # Reject detections with confidence lower than this threshold
   min_score: 0.3
+
+  # Camera module exposure time, in microseconds
   exposure_time: 5000
 
   # --- Pose estimation config---
@@ -118,8 +163,3 @@ camera_thread:
 
   # Diameter of the ping-pong ball (m)
   pong_ball_diameter: 0.04
-
-
-arduino_serial_interface:
-  serial_port: "/dev/ttyACM0"
-  baudrate: 115200

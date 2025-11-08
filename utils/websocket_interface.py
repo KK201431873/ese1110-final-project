@@ -6,7 +6,7 @@ import threading
 import websocket
 import cv2
 
-settings = load_settings()["iot_thread"]
+settings = load_settings()["websocket_interface"]
 server_ws = settings["server_ws"]
 pi_stream_password = settings["pi_stream_password"]
 

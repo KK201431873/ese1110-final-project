@@ -1,5 +1,6 @@
 from dynamic_motion_profile_2D import DynamicMotionProfile2D
 from utils.vector2 import Vector2
+from utils.pose2 import Pose2
 import math
 import time
 
@@ -11,6 +12,14 @@ def sinc(x):
     if abs(x) < 1e-8:
         return 1.0 - x**2/6.0
     return math.sin(x)/x
+
+def normalize_angle(radians: float) -> float:
+    """Normalize an angle to the range [-pi, pi)."""
+    while radians >= math.pi:
+        radians -= 2 * math.pi
+    while radians < -math.pi:
+        radians += 2 * math.pi
+    return radians
 
 class RAMSETEController:
     motion_profile: DynamicMotionProfile2D | None
@@ -63,12 +72,13 @@ class RAMSETEController:
         self.motion_profile = None
         self.motion_profile_creation_time = None
     
-    def update_relative(self,
+    def update_controller(self,
                         ball_pos: Vector2,
+                        robot_pose: Pose2,
                         current_vel: Vector2) -> tuple[float, float]:
         """
-        Calculate motor velocities in meters per second given ball position relative to 
-        the robot and current velocity of the robot. Use METERS as distance unit.
+        Calculate motor velocities in meters per second given absolute ball position, robot
+        position, and robot velocity. Use METERS as distance unit.
         """
 
         now = time.perf_counter()
@@ -81,7 +91,7 @@ class RAMSETEController:
             (ball_pos - self.last_target_pos).norm() > self.replanning_drift_threshold
             ):
             self.motion_profile = DynamicMotionProfile2D(
-                Vector2(0, 0),
+                robot_pose.COORDS,
                 ball_pos,
                 current_vel,
                 self.v_max,
@@ -90,18 +100,27 @@ class RAMSETEController:
             self.motion_profile_creation_time = now
             self.last_target_pos = ball_pos
 
-        # Calculate targets and errors
+        # Calculate targets
         elapsed = now - self.motion_profile_creation_time
         target_pos = self.motion_profile.get_position(elapsed + self.lookahead_time)
         target_vel = self.motion_profile.get_velocity(elapsed + self.lookahead_time)
 
         v_d = target_vel.norm()
-        theta_d = math.atan2(target_vel.y, target_vel.x)
+        theta_d = normalize_angle(math.atan2(target_vel.y, target_vel.x))
         omega_d = 0.0 # trajectory is a straight line
 
-        e_x = target_pos.x
-        e_y = target_pos.y
-        e_theta = math.atan2(math.sin(theta_d), math.cos(theta_d))  # normalized theta_d
+        # Calculate error
+        dr: Vector2 = target_pos - robot_pose.COORDS
+        dx = dr.x
+        dy = dr.y
+
+        theta_bot = robot_pose.h # rotation matrix
+        cos = math.cos(theta_bot)
+        sin = math.sin(theta_bot)
+
+        e_x =  dx * cos + dy * sin
+        e_y = -dx * sin + dy * cos
+        e_theta =  normalize_angle(theta_d - theta_bot)
 
         # Control law
         k = 2 * self.zeta * math.sqrt(omega_d**2 + self.b * v_d**2)

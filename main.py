@@ -1,5 +1,6 @@
 from threads.controller.controller_thread import ControllerThread
-from threads.iot.iot_thread import IoTThread
+from threads.iot.iot_camera_feed_thread import IoTCameraFeedThread
+from threads.iot.iot_minimap_thread import IoTMinimapThread
 from threads.peripherals.sensor_thread import SensorThread
 from threads.vision.camera_thread import CameraThread
 from utils.load_settings import load_settings
@@ -16,19 +17,22 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
     # --- Init threads ---
     settings = load_settings()
     controller_thread_frequency = settings["controller_thread"]["frequency"]
-    iot_thread_frequency = settings["iot_thread"]["frequency"]
+    iot_camera_feed_thread_frequency = settings["iot_camera_feed_thread"]["frequency"]
+    iot_minimap_thread_frequency = settings["iot_minimap_thread"]["frequency"]
     sensor_thread_frequency = settings["sensor_thread"]["frequency"]
     camera_thread_frequency = settings["camera_thread"]["frequency"]
 
     controller_thread = ControllerThread(frequency=controller_thread_frequency)
-    iot_thread = IoTThread(frequency=iot_thread_frequency)
+    iot_camera_feed_thread = IoTCameraFeedThread(frequency=iot_camera_feed_thread_frequency)
+    iot_minimap_thread = IoTMinimapThread(frequency=iot_minimap_thread_frequency)
     # sensor_thread = SensorThread(frequency=sensor_thread_frequency)
     camera_thread = CameraThread(frequency=camera_thread_frequency)
 
     # --- Start threads ---
     print("[MAIN] Starting up robot...")
     controller_thread.start()
-    iot_thread.start()
+    iot_camera_feed_thread.start()
+    iot_minimap_thread.start()
     # sensor_thread.start()
     camera_thread.start()
 

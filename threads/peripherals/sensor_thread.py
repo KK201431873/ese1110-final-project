@@ -1,6 +1,8 @@
 from utils.arduino_serial_interface import ArduinoSerialInterface
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
+from utils.vector2 import Vector2
+from utils.pose2 import Pose2
 from .sensor_thread_registers import sensor_variables
 import math
 
@@ -13,14 +15,8 @@ def normalize_angle(radians: float) -> float:
     return radians
 
 class SensorThread(PiThread):
-    ROBOT_X: float
-    """Global X coordinate of the robot in meters."""
-
-    ROBOT_Y: float
-    """Global Y coordinate of the robot in meters."""
-
-    ROBOT_H: float
-    """Global heading of the robot in radians."""
+    ROBOT_POSE: Pose2
+    """Global robot X and Y coordinates in meters and heading in radians."""
 
     _max_lines_read_per_loop: int
     """Maximum number of lines to read from the serial interface per loop."""
@@ -48,9 +44,10 @@ class SensorThread(PiThread):
 
     def _on_created_impl(self) -> None:
         # Instantiate at the origin, facing east
-        self.ROBOT_X = 0.0
-        self.ROBOT_Y = 0.0
-        self.ROBOT_H = 0.0
+        self.ROBOT_POSE = Pose2(
+            Vector2(0.0, 0.0),
+            0.0
+        )
         self.broadcast_robot_pose()
 
         self._last_encoder_left = None
@@ -130,25 +127,41 @@ class SensorThread(PiThread):
         delta_heading = (distance_right - distance_left) / self._wheel_base
 
         # Update robot's pose
-        self.ROBOT_X += delta_distance * math.cos(self.ROBOT_H + delta_heading / 2)
-        self.ROBOT_Y += delta_distance * math.sin(self.ROBOT_H + delta_heading / 2)
-        self.ROBOT_H = normalize_angle(self.ROBOT_H + delta_heading)
+        old_X = self.ROBOT_POSE.COORDS.x
+        old_Y = self.ROBOT_POSE.COORDS.y
+        old_H = self.ROBOT_POSE.h
+
+        new_X = old_X + delta_distance * math.cos(old_H + delta_heading / 2)
+        new_Y = old_Y + delta_distance * math.sin(old_H + delta_heading / 2)
+        new_H = normalize_angle(old_H + delta_heading)
+
+        self.ROBOT_POSE = Pose2(
+            Vector2(new_X, new_Y),
+            new_H
+        )
 
     def do_IMU_localization(self) -> None:
         # Fuse with IMU yaw
         imu_yaw = self["sensor.imu.yaw"]
         if imu_yaw is not None:
+            old_X = self.ROBOT_POSE.COORDS.x
+            old_Y = self.ROBOT_POSE.COORDS.y
+            old_H = self.ROBOT_POSE.h
+
             # Calculate weighted average of angles
-            x_h, y_h = math.cos(self.ROBOT_H), math.sin(self.ROBOT_H)
+            x_h, y_h = math.cos(old_H), math.sin(old_H)
             x_imu, y_imu = math.cos(imu_yaw), math.sin(imu_yaw)
             x_bar = self._alpha * x_imu + (1 - self._alpha) * x_h
             y_bar = self._alpha * y_imu + (1 - self._alpha) * y_h
-            self.ROBOT_H = math.atan2(y_bar, x_bar)
+            new_H = math.atan2(y_bar, x_bar)
+
+            self.ROBOT_POSE = Pose2(
+                Vector2(old_X, old_Y),
+                new_H
+            )
 
     def broadcast_robot_pose(self) -> None:
-        self["localization.x"] = self.ROBOT_X
-        self["localization.y"] = self.ROBOT_Y
-        self["localization.h"] = self.ROBOT_H
+        self["localization.pose"] = self.ROBOT_POSE
 
     def _on_shutdown_impl(self) -> None:
         ArduinoSerialInterface.close()
