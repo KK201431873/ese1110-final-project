@@ -3,6 +3,7 @@ from utils.load_settings import load_settings
 from utils.debug import print_from, raise_error_from
 import threading
 import serial
+import time
 
 settings = load_settings()["arduino_serial_interface"]
 serial_port: str = settings["serial_port"]
@@ -21,6 +22,9 @@ class ArduinoSerialInterface():
     _lock: threading.Lock = threading.Lock()
     """Lock for accessing serial channel."""
 
+    _buffer: bytes = b""
+    """Accumulate bytes until a newline is read"""
+
     @classmethod
     def _ensure_serial(cls, which_thread: type[PiThread] | PiThread | str) -> None:
         """Ensure serial port is open."""
@@ -29,7 +33,9 @@ class ArduinoSerialInterface():
                 try:
                     cls._ser = serial.Serial(port=cls._serial_port,
                                             baudrate=cls._baudrate,
-                                            timeout=1)
+                                            timeout=0)  # non-blocking
+                    cls._buffer = b""
+                    time.sleep(0.1)
                 except serial.SerialException as e:
                     raise_error_from(
                         which_thread, 
@@ -40,42 +46,43 @@ class ArduinoSerialInterface():
     def read_lines(cls, 
                    which_thread: type[PiThread] | PiThread | str, 
                    max_lines: int = 10) -> list[str]:
-        """Thread-safe read up to `max_lines` data lines from Arduino serial channel."""
+        """Read up to `max_lines` complete lines (ending with '\n')."""
         # Check serial channel status
         cls._ensure_serial(which_thread)
         if cls._ser is None:
-            raise_error_from(
-                which_thread, 
-                RuntimeError, f"Failed _ensure_serial() in read_line()"
-            )
+            raise_error_from(which_thread, RuntimeError, f"Failed _ensure_serial() in read_lines()")
             return []
         
         # Try reading data
         lines: list[str] = []
         with cls._lock:
             try:
-                # Non-blocking read: check how many bytes are available
-                while cls._ser.in_waiting > 0 and len(lines) < max_lines:
-                    raw = cls._ser.read(cls._ser.in_waiting or 1)
-                    if not raw:
-                        break
-                    
-                    # Split on newlines (handle partial reads)
-                    decoded = raw.decode(errors="ignore")
-                    split_lines = decoded.splitlines()
-                    lines.extend(split_lines)
-                    
-                    # Stop early if we already have enough lines
-                    if len(lines) >= max_lines:
-                        break
+                # Read all available bytes (non-blocking)
+                available = cls._ser.in_waiting
+                if available > 0:
+                    cls._buffer += cls._ser.read(available)
+
+                # Split into lines based on newline terminator
+                cls._buffer = cls._buffer.replace(b"\r", b"")
+                if b"\n" in cls._buffer:
+                    parts = cls._buffer.split(b"\n")
+                    complete_lines = parts[:-1]  # all full lines
+                    cls._buffer = parts[-1]      # leftover partial line
+
+                    for raw_line in complete_lines:
+                        decoded = raw_line.decode(errors="ignore").strip()
+                        if decoded:
+                            lines.append(decoded)
+                            if len(lines) >= max_lines:
+                                break
 
             except Exception as e:
                 print_from(which_thread, f"Error reading from serial: {e}")
                 cls._ser = None
+                cls._buffer = b""
                 return []
-            
-        # Trim to max_lines
-        return lines[:max_lines]
+
+        return lines
         
     @classmethod
     def write_line(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
@@ -83,10 +90,7 @@ class ArduinoSerialInterface():
         # Check serial channel status
         cls._ensure_serial(which_thread)
         if cls._ser is None:
-            raise_error_from(
-                which_thread, 
-                RuntimeError, f"Failed _ensure_serial() in write_line()"
-            )
+            raise_error_from(which_thread, RuntimeError, f"Failed _ensure_serial() in write_line()")
             return
         
         # Try writing data

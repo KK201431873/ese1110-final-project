@@ -23,44 +23,82 @@ class WebSocketInterface():
     _lock: threading.Lock = threading.Lock()
     """Lock for accessing WebSocket."""
 
+    _connect_thread: threading.Thread | None = None
+    _connecting: bool = False
+
+    @classmethod
+    def _connect_in_background(cls, which_thread: type[PiThread] | PiThread | str):
+        """Background thread function to connect to WebSocket."""
+        with cls._lock:
+            if cls._connecting:
+                return
+            cls._connecting = True
+
+        try:
+            print_from(which_thread, f"Connecting to {cls._server_ws}...")
+            ws = websocket.WebSocket()
+            ws.connect(cls._server_ws, timeout=2)
+            ws.send(str(cls._pi_stream_password))
+            with cls._lock:
+                cls._ws = ws
+            print_from(which_thread, f"Connected successfully to {cls._server_ws}")
+        except Exception as e:
+            print_from(which_thread, f"Connection failed: {e}")
+            with cls._lock:
+                cls._ws = None
+        finally:
+            with cls._lock:
+                cls._connecting = False
+
     @classmethod
     def _ensure_socket(cls, which_thread: type[PiThread] | PiThread | str) -> None:
-        """Ensure WebSocket is connected with Flask server."""
+        """Ensure WebSocket is connected with Flask server (async version)."""
         with cls._lock:
-            if cls._ws is None or not cls._ws.connected:
-                try:
-                    # Initialize WebSocket
-                    cls._ws = websocket.WebSocket()
-                    cls._ws.close()
-                    cls._ws.connect(server_ws)
-                    cls._ws.send(pi_stream_password)
-                    print_from(which_thread, f"Reconnecting... pass: {cls._pi_stream_password}")
-                except Exception as e:
-                    print_from(
-                        which_thread, f"Failed to connect to server {cls._server_ws}: {e}"
-                    )
+            ws_connected = cls._ws is not None and cls._ws.connected
+            connecting = cls._connecting
+
+        if ws_connected:
+            return  # Already connected
+
+        # If not connected and not currently connecting, start a background thread
+        if not connecting:
+            cls._connect_thread = threading.Thread(
+                target=cls._connect_in_background,
+                args=(which_thread,),
+                daemon=True
+            )
+            cls._connect_thread.start()
+
+    @classmethod
+    def _safe_send(cls, which_thread, prefix: bytes, payload: bytes) -> None:
+        """Helper to safely send data to the WebSocket if connected."""
+        with cls._lock:
+            ws = cls._ws
+            connecting = cls._connecting
+
+        if ws is None or not ws.connected:
+            if not connecting:
+                print_from(which_thread, "WebSocket not connected — skipping send")
+            return
+
+        try:
+            ws.send(prefix + payload, opcode=websocket.ABNF.OPCODE_BINARY)
+        except Exception as e:
+            print_from(which_thread, f"Send failed: {e}")
+            with cls._lock:
+                cls._ws = None
+
+    # === Public send functions ===
 
     @classmethod
     def send_frame(cls, which_thread: type[PiThread] | PiThread | str, frame: np.ndarray) -> None:
         """Thread-safe send a frame to the WebSocket server."""
-        # Check websocket status
         cls._ensure_socket(which_thread)
-        if cls._ws is None:
-            raise_error_from(
-                which_thread, 
-                RuntimeError, f"Failed _ensure_socket() in send_frame()"
-            )
-            return
-        
-        # Try sending the frame
-        with cls._lock:
-            try:
-                _, jpeg = cv2.imencode(".jpg", frame)
-                cls._ws.send(b"\x01" + jpeg.tobytes(), opcode=websocket.ABNF.OPCODE_BINARY)
-            except Exception as e:
-                print_from(which_thread, f"Error sending frame: {e}")
-                cls._ws = None
-                return
+        try:
+            _, jpeg = cv2.imencode(".jpg", frame)
+            cls._safe_send(which_thread, b"\x01", jpeg.tobytes())
+        except Exception as e:
+            print_from(which_thread, f"send_frame error: {e}")
         
     @classmethod
     def send_variable(cls, which_thread: type[PiThread] | PiThread | str, name: str, value: str) -> None:
@@ -68,52 +106,30 @@ class WebSocketInterface():
         # Variable name cannot contain a colon
         if ":" in name:
             raise_error_from(which_thread, RuntimeError, f"Variable name {name} cannot contain a colon ':'")
-
-        # Check websocket status
-        cls._ensure_socket(which_thread)
-        if cls._ws is None:
-            raise_error_from(
-                which_thread, 
-                RuntimeError, f"Failed _ensure_socket() in send_variable()"
-            )
-            return
         
         # Try sending the variable
-        with cls._lock:
-            try:
-                encoded_message = f"{name}:{value}".encode()
-                cls._ws.send(b"\x02" + encoded_message, opcode=websocket.ABNF.OPCODE_BINARY)
-            except Exception as e:
-                print_from(which_thread, f"Error sending variable {name}: {e}")
-                cls._ws = None
-                return
+        cls._ensure_socket(which_thread)
+        encoded = f"{name}:{value}".encode()
+        cls._safe_send(which_thread, b"\x02", encoded)
     
     @classmethod
     def send_minimap(cls, which_thread: type[PiThread] | PiThread | str, minimap: np.ndarray) -> None:
         """Thread-safe send the minimap image to the WebSocket server."""
-        # Check websocket status
         cls._ensure_socket(which_thread)
-        if cls._ws is None:
-            raise_error_from(
-                which_thread, 
-                RuntimeError, f"Failed _ensure_socket() in send_minimap()"
-            )
-            return
-        
-        # Try sending the frame
-        with cls._lock:
-            try:
-                _, jpeg = cv2.imencode(".jpg", minimap)
-                cls._ws.send(b"\x03" + jpeg.tobytes(), opcode=websocket.ABNF.OPCODE_BINARY)
-            except Exception as e:
-                print_from(which_thread, f"Error sending minimap: {e}")
-                cls._ws = None
-                return
+        try:
+            _, jpeg = cv2.imencode(".jpg", minimap)
+            cls._safe_send(which_thread, b"\x03", jpeg.tobytes())
+        except Exception as e:
+            print_from(which_thread, f"send_minimap error: {e}")
     
     @classmethod
-    def close(cls) -> None:
+    def close(cls):
         """Close the WebSocket connection safely."""
         with cls._lock:
             if cls._ws and cls._ws.connected:
-                cls._ws.close()
+                try:
+                    cls._ws.close()
+                except:
+                    pass
             cls._ws = None
+            cls._connecting = False

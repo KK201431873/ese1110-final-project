@@ -59,15 +59,28 @@ class CameraThread(PiThread):
 
         # Detector class names
         self.class_names = ["ping-pong-ball"]  # update with your classes
-        
-        # Warm up and set exposure
-        time.sleep(1)
-        self.picam2.set_controls({
-            "AeEnable": False,
-            "ExposureTime": exposure_time # microseconds
-        })
 
     def _on_start_impl(self) -> None:
+        # Wait until camera is warmed up
+        exposure_set_start_time = time.perf_counter()
+        while True:
+            try:
+                frame = self.picam2.capture_metadata()
+                if frame is not None:
+                    break
+            except Exception:
+                pass
+            if time.perf_counter() - exposure_set_start_time > 1:
+                self.raise_error(RuntimeError, "Failed to set camera exposure.")
+            time.sleep(0.05)
+        
+        # Set exposure
+        self.picam2.set_controls({
+            "AeEnable": False,
+            "ExposureTime": exposure_time
+        })
+
+        # Telemetry
         self.print("Alive!")
 
     def _loop_impl(self) -> None:

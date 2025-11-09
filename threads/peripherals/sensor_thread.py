@@ -49,7 +49,7 @@ class SensorThread(PiThread):
             Vector2(0.0, 0.0),
             0.0
         )
-        self.broadcast_robot_pose()
+        self["localization.pose"] = self.ROBOT_POSE
 
         self._last_encoder_left = None
         self._last_encoder_right = None
@@ -72,7 +72,7 @@ class SensorThread(PiThread):
 
     def _loop_impl(self) -> None:
         data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=self._max_lines_read_per_loop)
-        self.print(f"Read {len(data_lines)} lines from serial")
+        # self.print(f"Read {len(data_lines)} lines from serial")
         if not data_lines:
             return
         

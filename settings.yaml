@@ -8,7 +8,7 @@ arduino_serial_interface:
   serial_port: "/dev/ttyACM0"
 
   # Baudrate, must be same as Arduino's
-  baudrate: 19200
+  baudrate: 115200
 
 
 websocket_interface:
@@ -41,7 +41,7 @@ drive_config:
 
 
 controller_thread:
-  frequency: 30
+  frequency: 60
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)
   max_pickup_timeout: 1000
@@ -71,7 +71,7 @@ iot_camera_feed_thread:
 
 
 iot_minimap_thread:
-  frequency: 10
+  frequency: 20
 
   # Colors
   BG_COLOR: [20, 20, 20]
@@ -91,7 +91,7 @@ iot_minimap_thread:
 
 
 sensor_thread:
-  frequency: 30
+  frequency: 25
 
   # Maximum number of lines to read from the serial interface per loop.
   max_lines_read_per_loop: 10

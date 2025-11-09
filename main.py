@@ -1,3 +1,6 @@
+import time
+start_time = time.perf_counter()
+
 from threads.controller.controller_thread import ControllerThread
 from threads.iot.iot_camera_feed_thread import IoTCameraFeedThread
 from threads.iot.iot_minimap_thread import IoTMinimapThread
@@ -35,6 +38,9 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
     iot_minimap_thread.start()
     sensor_thread.start()
     camera_thread.start()
+
+    elapsed_time = time.perf_counter() - start_time
+    print(f"STARTUP TIME: {elapsed_time}")
 
     # --- Main loop ---
     try:

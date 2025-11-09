@@ -1,6 +1,5 @@
 from utils.pi_thread import PiThread
 from utils.load_settings import load_settings
-from utils.websocket_interface import WebSocketInterface
 from threads.vision.camera_thread import CameraThread
 from threads.peripherals.sensor_thread import SensorThread
 from .algorithm.ramsete_controller import RAMSETEController
@@ -8,9 +7,7 @@ from utils.vector2 import Vector2
 from utils.pose2 import Pose2
 from . import controller_serial_interface as controller
 from enum import Enum
-import numpy as np
 import time
-import cv2
 
 class State(Enum):
     SEARCH = 0
@@ -158,7 +155,11 @@ class ControllerThread(PiThread):
     
     def get_closest_ball(self) -> Vector2 | None:
         found_objects: list[Vector2] = CameraThread["detection.points"] or []
-        if len(found_objects) == 0:
+        if len(found_objects) == 0 or self.ROBOT_POSE is None:
             return None
-        closest_ball = min(found_objects, key=lambda p: p.norm())
+        def key(p: Vector2) -> float:
+            if self.ROBOT_POSE is None:
+                return -1
+            return (p - self.ROBOT_POSE.COORDS).norm()
+        closest_ball = min(found_objects, key=key)
         return closest_ball

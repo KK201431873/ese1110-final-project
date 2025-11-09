@@ -153,7 +153,7 @@ class IoTMinimapThread(PiThread):
         if detection_points is None or len(detection_points) == 0:
             return minimap
 
-        closest_ball, remaining_balls = self.separate_closest_ball(detection_points)
+        closest_ball, remaining_balls = self.separate_closest_ball(detection_points, robot_pose.COORDS)
 
         def draw_ball(ball: Vector2, color: tuple[int, int, int]) -> None:
             bx = int(center[0] + px_per_m * (ball.x - robot_pose.COORDS.x))
@@ -173,12 +173,12 @@ class IoTMinimapThread(PiThread):
         return minimap
 
     
-    def separate_closest_ball(self, detection_points: list[Vector2]) -> tuple[Vector2, list[Vector2]]:
+    def separate_closest_ball(self, detection_points: list[Vector2], robot_pos: Vector2) -> tuple[Vector2, list[Vector2]]:
         """Takes a nonempty list of detection points and returns the closest point and a list with that point removed."""
         if not detection_points:
             raise ValueError("detection_points must be nonempty")
         
-        i, closest_ball = min(enumerate(detection_points), key=lambda p: p[1].norm())
+        i, closest_ball = min(enumerate(detection_points), key=lambda p: (p[1]-robot_pos).norm())
         remaining = detection_points[:i] + detection_points[i+1:]
         return closest_ball, remaining
 
