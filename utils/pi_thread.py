@@ -203,7 +203,7 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
         try:
             self._on_shutdown_impl()
         except Exception as shutdown_err:
-            self.raise_error(RuntimeError, f"Error in shutdown: {shutdown_err}")
+            self.print(RuntimeError(f"Error in shutdown: {shutdown_err}"))
         self._alive = False
         if self.name in PiThread._global_data_locks:
             with PiThread._global_data_locks[self.name]:
