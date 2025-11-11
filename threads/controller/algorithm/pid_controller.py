@@ -13,16 +13,13 @@ class PIDController:
         self.total_error = 0
         self.last_update_time = time.perf_counter()
     
-    def update(self, setpoint: float, state: float) -> float:
-        """Update using the given setpoint and state. Returns the combined control output."""
+    def update(self, error: float) -> float:
+        """Update using the given error. Returns the combined control output."""
 
         # Get delta time
         now = time.perf_counter()
         delta_time = now - self.last_update_time
         self.last_update_time = now
-
-        # Calculate error
-        error = state - setpoint
 
         # P term
         p = self.kP * error

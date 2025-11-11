@@ -1,6 +1,15 @@
 from utils.arduino_serial_interface import ArduinoSerialInterface
 
 # --- Controller functions ---
+def drive_speed_angle(speed: float, angle: float) -> None:
+    """Positive speed drives forward, positive angle turns CCW. Speed and angle must be between -1.0 and 1.0."""
+    speed = clamp(speed, -1.0, 1.0)
+    angle = clamp(angle, -1.0, 1.0)
+    left = clamp(speed - angle, -1.0, 1.0)
+    right = clamp(speed + angle, -1.0, 1.0)
+    set_left_drive_power(left)
+    set_right_drive_power(right)
+
 def set_left_drive_power(power: float) -> None:
     """Set the power of the left drive motor. Power must be between -1.0 and 1.0."""
     power = clamp(power, -1.0, 1.0)

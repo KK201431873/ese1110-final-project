@@ -44,24 +44,25 @@ drive_config:
 controller_thread:
   frequency: 60
 
-  # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (ms)
-  max_pickup_timeout: 1000
+  # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
+  NO_DETECTION_TIMEOUT: 0.5
 
-  # --- RAMSETE controller config ---
-  # Responsiveness tuning parameter for the RAMSETE controller.
-  b: 2.0
+  # Maximum time before forcing a new target position (seconds).
+  BALL_MAX_LIFESPAN: 0.5
 
-  # Damping coefficient for the RAMSETE controller.
-  zeta: 0.7
+  # Maximum movement of the ball before forcing a new target position (meters).
+  BALL_MAX_DRIFT: 0.05 # 5cm
 
-  # Maximum time before forcing a new motion profile (seconds).
-  replanning_max_delay: 0.5
+  # Priority for heading correction over driving forward during PICKUP. Must be positive.
+  HEADING_PRIORITY: 60
 
-  # Maximum movement of the ball before replanning (meters).
-  replanning_drift_threshold: 0.05 # 5cm
-  
-  # Lookahead time for the motion profile (seconds).
-  lookahead_time: 0.1
+  # Proportion of maximum linear velocity to cap speed at during PICKUP.
+  MAX_PICKUP_SPEED: 0.5
+
+  # PID tuning constants
+  kP: 1.0
+  kI: 0.0
+  kD: 0.0
 
 
 iot_camera_feed_thread:
