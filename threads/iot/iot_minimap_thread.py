@@ -5,6 +5,7 @@ from utils.pose2 import Pose2
 from utils.vector2 import Vector2
 from threads.peripherals.sensor_thread import SensorThread
 from threads.vision.camera_thread import CameraThread
+from threads.controller.controller_thread import ControllerThread
 import numpy as np
 import math
 import cv2
@@ -149,12 +150,7 @@ class IoTMinimapThread(PiThread):
         cv2.line(minimap, center, (end_x, end_y), (255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
 
         # --- Draw detections ---
-        detection_points: list[Vector2] | None = CameraThread["detection.absolute_points"]
-        if detection_points is None or len(detection_points) == 0:
-            return minimap
-
-        closest_ball, remaining_balls = self.separate_closest_ball(detection_points, robot_pose.COORDS)
-
+        # Helper function
         def draw_ball(ball: Vector2, color: tuple[int, int, int]) -> None:
             bx = int(center[0] + px_per_m * (ball.x - robot_pose.COORDS.x))
             by = int(center[1] - px_per_m * (ball.y - robot_pose.COORDS.y))
@@ -163,13 +159,22 @@ class IoTMinimapThread(PiThread):
                 return
             cv2.circle(minimap, (bx, by), 6, color, thickness=cv2.FILLED, lineType=cv2.LINE_AA)
 
-        # Draw closest ball
-        draw_ball(closest_ball, self.BEST_DETECTION_COLOR)
-
-        # Draw farther balls
-        for ball in remaining_balls:
-            draw_ball(ball, self.FAR_DETECTION_COLOR)
-
+        # First draw all current detections
+        detection_points: dict[str, list[Vector2]] = CameraThread["detection.points"] or {
+            "relative_points": [],
+            "absolute_points": []
+        }
+        relative_points = detection_points["relative_points"]
+        absolute_points = detection_points["absolute_points"]
+        if 0 < len(relative_points) == len(absolute_points):
+            for ball in absolute_points:
+                draw_ball(ball, self.FAR_DETECTION_COLOR)
+        
+        # Then draw currently targeted ball
+        target_ball_points: tuple[Vector2, Vector2] | None = ControllerThread["target_ball_points"]
+        if target_ball_points is not None:
+            draw_ball(target_ball_points[1], self.BEST_DETECTION_COLOR) # Absolute position of closest ball
+            
         return minimap
 
     

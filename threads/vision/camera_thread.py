@@ -141,8 +141,11 @@ class CameraThread(PiThread):
 
         # Share detection data
         self["detection.frame"] = annotated
-        self["detection.relative_points"] = relative_points
-        self["detection.absolute_points"] = absolute_points
+        detection_points: dict[str, list[Vector2]] = {
+            "relative_points": relative_points,
+            "absolute_points": absolute_points
+        }
+        self["detection.points"] = detection_points
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
         """

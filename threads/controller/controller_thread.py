@@ -10,6 +10,14 @@ from enum import Enum
 import time
 import math
 
+def normalize_angle(radians: float) -> float:
+    """Normalize an angle to the range [-pi, pi)."""
+    while radians >= math.pi:
+        radians -= 2 * math.pi
+    while radians < -math.pi:
+        radians += 2 * math.pi
+    return radians
+
 class State(Enum):
     SEARCH = 0
     PICKUP = 1
@@ -43,23 +51,14 @@ class ControllerThread(PiThread):
     _pid_controller: PIDController | None
     """Instance of a PID controller."""
 
-    _ball_position: Vector2 | None
-    """Relative position of the target ball."""
+    _ball_points: tuple[Vector2, Vector2] | None
+    """(Relative, Absolute) points of the actively targeted ball."""
 
     _last_detection_time: float
     """Timestamp of the last detected ball."""
 
     _last_retarget_time: float
     """Timestamp of the last change in the target position."""
-
-    _left_power: float
-    """Left wheel speed."""
-
-    _right_power: float
-    """Right wheel speed."""
-
-    _POWER_TO_SPEED: float
-    """Conversion factor from power to speed."""
 
     def _on_created_impl(self) -> None:
         self.STATE = State.SEARCH
@@ -76,11 +75,9 @@ class ControllerThread(PiThread):
         self.kI = controller_settings["kI"]
         self.kD = controller_settings["kD"]
 
-        self._ball_position = None
+        self._ball_points = None
         self._last_detection_time = 0.0
         self._last_retarget_time = 0.0
-
-        self._POWER_TO_SPEED = settings["drive_config"]["v_max"]
 
         self._pid_controller = None
 
@@ -112,9 +109,8 @@ class ControllerThread(PiThread):
                 # controller.set_intake_power(0.0)
                 
                 # Go PICKUP if a ball is detected
-                closest_ball = self.get_closest_ball()
-                if closest_ball is not None:
-                    self._ball_position = closest_ball
+                self._ball_points = self.get_closest_ball_points()
+                if self._ball_points is not None:
                     self._last_detection_time = now
                     self.STATE = State.PICKUP
 
@@ -127,8 +123,8 @@ class ControllerThread(PiThread):
             # --- The robot found a ping-pong ball, trying to pick it up now ---
             case State.PICKUP:
                 # Handle ball tracking and fallback to SEARCH
-                if self.track_ball(now) or self._ball_position is None or self._pid_controller is None:
-                    self._ball_position = None
+                if self.track_ball(now) or self._ball_points is None or self._pid_controller is None:
+                    self._ball_points = None
                     self.STATE = State.SEARCH
                     return
 
@@ -136,9 +132,11 @@ class ControllerThread(PiThread):
                 controller.set_intake_position(45)
                 controller.set_intake_power(1.0)
 
-                # Control heading and approach ball
-                bx, by = self._ball_position.x, self._ball_position.y
-                e_h = math.atan2(by, bx) # Heading error (rad)
+                # Control heading and approach ball (use relative coordinates)
+                bx, by = self._ball_points[0].x, self._ball_points[0].y
+                if abs(bx) < 1e-3:
+                    bx = 1e-3 # very, very rare edge case
+                e_h = normalize_angle(math.atan2(by, bx)) # Heading error (rad)
                 k = math.exp(-e_h*e_h*self.HEADING_PRIORITY)
 
                 # Control outputs
@@ -149,22 +147,37 @@ class ControllerThread(PiThread):
 
             # --- The robot is transferring the ball to its bin ---
             case State.TRANSFER:
+                
                 # TODO: Implement transfer logic
                 pass
 
             
             case _: # This should never happen
                 pass
+  
+        # Share target data for minimap
+        self["target_ball_points"] = self._ball_points # (Relative, Absolute) points of actively targeted ball
+
 
     def _on_shutdown_impl(self) -> None:
         controller.stop_drive()
     
-    def get_closest_ball(self) -> Vector2 | None:
-        relative_points: list[Vector2] = CameraThread["detection.relative_points"] or []
-        if len(relative_points) == 0:
+    def get_closest_ball_points(self) -> tuple[Vector2, Vector2] | None:
+        # Get and check points from camera (dictionary with equal-sized lists of relative and absolute ball detection coordinates)
+        detection_points: dict[str, list[Vector2]] = CameraThread["detection.points"] or {
+            "relative_points": [],
+            "absolute_points": []
+        }
+        relative_points = detection_points["relative_points"]
+        absolute_points = detection_points["absolute_points"]
+        if len(relative_points)==0 or len(absolute_points)==0 or len(relative_points)!=len(absolute_points):
             return None
-        closest_ball = min(relative_points, key=lambda p: p.norm())
-        return closest_ball
+        
+        # Extract closest point
+        zipped_points = list(zip(relative_points, absolute_points)) # [(Relative, Absolute), ...] for each ball
+        closest_ball_points = min(zipped_points, key=lambda p: p[0].norm()) # Use relative
+
+        return closest_ball_points # (Relative, Absolute) coordinates of closest ball
 
     def track_ball(self, now: float) -> bool:
         """
@@ -175,27 +188,27 @@ class ControllerThread(PiThread):
             change_state (bool): True if need to switch back to SEARCH state.
         """
         # This should never happen ----
-        if self._ball_position is None or self._pid_controller is None:
+        if self._ball_points is None or self._pid_controller is None:
             return True
         # -----------------------------
 
         # Update ball position
-        closest_ball = self.get_closest_ball()
+        closest_ball_points = self.get_closest_ball_points()
 
-        if closest_ball is None:
+        if closest_ball_points is None:
             # Go SEARCH if no ball detected for a while
             if now - self._last_detection_time > self.NO_DETECTION_TIMEOUT:
                 return True
         else:
-            # Check if ball moved
-            update_position = (self._ball_position - closest_ball).norm() > self.BALL_MAX_DRIFT
-            
             # Check if current detection timed out
-            update_position |= now - self._last_retarget_time > self.BALL_MAX_LIFESPAN
+            update_position = now - self._last_retarget_time > self.BALL_MAX_LIFESPAN
+            
+            # Check if ball moved (use absolute coordinates)
+            update_position |= (self._ball_points[1] - closest_ball_points[1]).norm() > self.BALL_MAX_DRIFT
 
             # Update state
             if update_position:
-                self._ball_position = closest_ball
+                self._ball_points = closest_ball_points
                 self._last_retarget_time = now
             # Always refresh detection time if ball visible
             self._last_detection_time = now
