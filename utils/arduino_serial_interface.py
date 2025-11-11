@@ -6,68 +6,68 @@ import serial
 import time
 
 settings = load_settings()["arduino_serial_interface"]
-serial_port: str = settings["serial_port"]
 baudrate: int = settings["baudrate"]
 
-class ArduinoSerialInterface():
-    _serial_port: str = serial_port
-    """USB on Raspberry Pi that Arduino is connected to."""
+class _SerialChannel:
+    def __init__(self, port: str, baudrate: int):
+        self._port = port
+        """Path ending with an Arduino ID."""
 
-    _baudrate: int = baudrate
-    """Sync with Arduino."""
+        self._baudrate = baudrate
+        """Sync with Arduino, usually 115200."""
 
-    _ser: serial.Serial | None = None
-    """Serial communication channel."""
+        self._ser: serial.Serial | None = None
+        """Serial communication channel."""
 
-    _lock: threading.Lock = threading.Lock()
-    """Lock for accessing serial channel."""
+        self._lock = threading.RLock()
+        """Reentrant lock for accessing serial channel."""
 
-    _buffer: bytes = b""
-    """Accumulate bytes until a newline is read"""
+        self._buffer = b""
+        """Accumulate bytes until a newline is read"""
 
-    @classmethod
-    def _ensure_serial(cls, which_thread: type[PiThread] | PiThread | str) -> None:
+        self._ensure_open("_SerialChannel")
+
+    def _ensure_open(self, which_thread: type[PiThread] | PiThread | str) -> None:
         """Ensure serial port is open."""
-        with cls._lock:
-            if cls._ser is None or not cls._ser.is_open:
+        with self._lock:
+            if self._ser is None or not self._ser.is_open:
                 try:
-                    cls._ser = serial.Serial(port=cls._serial_port,
-                                            baudrate=cls._baudrate,
+                    self._ser = serial.Serial(port=self._port,
+                                            baudrate=self._baudrate,
                                             timeout=0)  # non-blocking
-                    cls._buffer = b""
+                    self._buffer = b""
                     time.sleep(0.1)
                 except serial.SerialException as e:
                     raise_error_from(
                         which_thread, 
-                        RuntimeError, f"Failed to open serial port {cls._serial_port}: {e}"
+                        RuntimeError, f"Failed to open serial port {self._port}: {e}"
                     )
 
-    @classmethod
-    def read_lines(cls, 
+    def read_lines(self, 
                    which_thread: type[PiThread] | PiThread | str, 
                    max_lines: int = 10) -> list[str]:
         """Read up to `max_lines` complete lines (ending with '\n')."""
-        # Check serial channel status
-        cls._ensure_serial(which_thread)
-        if cls._ser is None:
-            raise_error_from(which_thread, RuntimeError, f"Failed _ensure_serial() in read_lines()")
-            return []
-        
-        # Try reading data
         lines: list[str] = []
-        with cls._lock:
+        with self._lock:
+            # Check serial channel status
+            self._ensure_open(which_thread)
+            if self._ser is None:
+                raise_error_from(which_thread, RuntimeError, f"Failed _ensure_open() in read_lines() for port {self._port}")
+                return []
+            
+            # Try reading data
             try:
                 # Read all available bytes (non-blocking)
-                available = cls._ser.in_waiting
+                available = self._ser.in_waiting
                 if available > 0:
-                    cls._buffer += cls._ser.read(available)
+                    self._buffer += self._ser.read(available)
 
                 # Split into lines based on newline terminator
-                cls._buffer = cls._buffer.replace(b"\r", b"")
-                if b"\n" in cls._buffer:
-                    parts = cls._buffer.split(b"\n")
+                self._buffer = self._buffer.replace(b"\r", b"")
+                if b"\n" in self._buffer:
+                    parts = self._buffer.split(b"\n")
                     complete_lines = parts[:-1]  # all full lines
-                    cls._buffer = parts[-1]      # leftover partial line
+                    self._buffer = parts[-1]      # leftover partial line
 
                     for raw_line in complete_lines:
                         decoded = raw_line.decode(errors="ignore").strip()
@@ -78,33 +78,73 @@ class ArduinoSerialInterface():
 
             except Exception as e:
                 print_from(which_thread, f"Error reading from serial: {e}")
-                cls._ser = None
-                cls._buffer = b""
+                self._ser = None
+                self._buffer = b""
                 return []
 
         return lines
         
-    @classmethod
-    def write_line(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
+    def write_line(self, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
         """Thread-safe write a line to Arduino serial channel."""
-        # Check serial channel status
-        cls._ensure_serial(which_thread)
-        if cls._ser is None:
-            raise_error_from(which_thread, RuntimeError, f"Failed _ensure_serial() in write_line()")
-            return
-        
-        # Try writing data
-        with cls._lock:
+        with self._lock:
+            # Check serial channel status
+            self._ensure_open(which_thread)
+            if self._ser is None:
+                raise_error_from(which_thread, RuntimeError, f"Failed _ensure_open() in write_line()")
+                return
+            
+            # Try writing data
             try:
-                cls._ser.write((data + "\n").encode())
+                self._ser.write((data + "\n").encode())
             except Exception as e:
                 print_from(which_thread, f"Error writing to serial: {e}")
-                cls._ser = None  # force reinit on next read/write
-    
-    @classmethod
-    def close(cls):
+                self._ser = None  # force reinit on next read/write
+
+    def close(self) -> None:
         """Close the serial port safely."""
-        with cls._lock:
-            if cls._ser and cls._ser.is_open:
-                cls._ser.close()
-            cls._ser = None
+        with self._lock:
+            if self._ser and self._ser.is_open:
+                self._ser.close()
+            self._ser = None
+    
+
+
+class ArduinoSerialInterface():
+    _sensor: _SerialChannel | None = None
+    """Arduino WIFI reads sensor data and Pi receives it here."""
+
+    _actuator: _SerialChannel | None = None
+    """Pi sends commands to Arduino Minima, which controls actuators."""
+
+    _init_lock = threading.Lock()
+    """Lock for initializing serial channels."""
+
+    @classmethod
+    def _ensure_init(cls):
+        with cls._init_lock:
+            if cls._sensor is None:
+                cls._sensor = _SerialChannel(settings["sensor_port"], baudrate)
+            if cls._actuator is None:
+                cls._actuator = _SerialChannel(settings["actuator_port"], baudrate)
+
+    @classmethod
+    def read_lines(cls, which_thread: type[PiThread] | PiThread | str, max_lines: int = 10) -> list[str]:
+        cls._ensure_init()
+        if cls._sensor:
+            return cls._sensor.read_lines(which_thread, max_lines)
+        else:
+            return []
+
+    @classmethod
+    def write_line(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
+        cls._ensure_init()
+        if cls._actuator:
+            cls._actuator.write_line(which_thread, data)
+
+    @classmethod
+    def close_all(cls) -> None:
+        cls._ensure_init()
+        if cls._sensor:
+            cls._sensor.close()
+        if cls._actuator:
+            cls._actuator.close()

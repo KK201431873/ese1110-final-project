@@ -104,7 +104,8 @@ class CameraThread(PiThread):
 
         # Draw results
         annotated = frame.copy()
-        detection_points: list[Vector2] = []
+        relative_points: list[Vector2] = []
+        absolute_points: list[Vector2] = []
         for (x1, y1, x2, y2), score, cls in zip(boxes, confidences, class_ids):
             if score < self._min_score:
                 continue
@@ -115,6 +116,7 @@ class CameraThread(PiThread):
             relative_pos: Vector2 | None = self.relative_ball_position((ball_px, ball_py))
             if relative_pos is None:
                 continue
+            relative_points.append(relative_pos)
 
             real_x = relative_pos.x
             real_y = relative_pos.y
@@ -124,7 +126,7 @@ class CameraThread(PiThread):
             # Calculate absolute ball position
             absolute_pos = self.absolute_ball_position(relative_pos)
             if absolute_pos is not None:
-                detection_points.append(absolute_pos)
+                absolute_points.append(absolute_pos)
 
             # Annotate frame
             color = (0, 255, 0)
@@ -139,7 +141,8 @@ class CameraThread(PiThread):
 
         # Share detection data
         self["detection.frame"] = annotated
-        self["detection.points"] = detection_points
+        self["detection.relative_points"] = relative_points
+        self["detection.absolute_points"] = absolute_points
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
         """

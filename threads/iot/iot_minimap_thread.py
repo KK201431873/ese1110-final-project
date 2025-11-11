@@ -149,7 +149,7 @@ class IoTMinimapThread(PiThread):
         cv2.line(minimap, center, (end_x, end_y), (255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
 
         # --- Draw detections ---
-        detection_points: list[Vector2] | None = CameraThread["detection.points"]
+        detection_points: list[Vector2] | None = CameraThread["detection.absolute_points"]
         if detection_points is None or len(detection_points) == 0:
             return minimap
 

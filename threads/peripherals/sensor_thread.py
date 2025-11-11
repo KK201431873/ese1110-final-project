@@ -35,7 +35,7 @@ class SensorThread(PiThread):
     """Encoder ticks per revolution of the wheel motor."""
 
     _gear_ratio: float
-    """Gear ratio from the motor's gear to the wheel's gear."""
+    """Gear ratio of motor:wheel."""
 
     _wheel_diameter: float
     """Diameter of the wheels (meters)."""

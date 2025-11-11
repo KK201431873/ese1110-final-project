@@ -77,7 +77,7 @@ class RAMSETEController:
                         robot_pose: Pose2,
                         current_vel: Vector2) -> tuple[float, float]:
         """
-        Calculate motor velocities in meters per second given absolute ball position, robot
+        Calculate motor velocities as power between [0..1] given absolute ball position, robot
         position, and robot velocity. Use METERS as distance unit.
         """
 
@@ -131,8 +131,11 @@ class RAMSETEController:
         left = v - omega * (self.wheel_base / 2)
         right = v + omega * (self.wheel_base / 2)
 
-        # Clamp
-        left = clamp(left, -self.v_max, self.v_max)
-        right = clamp(right, -self.v_max, self.v_max)
+        # Scale and clamp
+        left /= self.v_max
+        right /= self.v_max
+
+        left = clamp(left, -1.0, 1.0)
+        right = clamp(right, -1.0, 1.0)
 
         return (left, right)

@@ -30,6 +30,10 @@ class DynamicMotionProfile2D:
             a_max_1 = a_max,
             a_max_2 = a_max
         )
+
+    def get_duration(self) -> float:
+        """Get the total duration of this motion profile."""
+        return self.motion_profile_1d.get_duration()
     
     def get_position(self, elapsed_time: float) -> Vector2:
         """Get the position at `elapsed_time` according to this motion profile."""
