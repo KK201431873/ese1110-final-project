@@ -172,4 +172,4 @@ class SensorThread(PiThread):
         WebSocketInterface.send_variable(self, "localization.pose.h", str(round(math.degrees(self.ROBOT_POSE.h), 2)))
 
     def _on_shutdown_impl(self) -> None:
-        ArduinoSerialInterface.close()
+        ArduinoSerialInterface.close_all()

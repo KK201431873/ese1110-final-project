@@ -1,10 +1,11 @@
 from utils.pi_thread import PiThread
 from utils.load_settings import load_settings
+from utils.websocket_interface import WebSocketInterface
+from utils.vector2 import Vector2
+from utils.pose2 import Pose2
 from threads.vision.camera_thread import CameraThread
 from threads.peripherals.sensor_thread import SensorThread
 from .algorithm.pid_controller import PIDController
-from utils.vector2 import Vector2
-from utils.pose2 import Pose2
 from . import controller_serial_interface as controller
 from enum import Enum
 import time
@@ -122,8 +123,10 @@ class ControllerThread(PiThread):
 
             # --- The robot found a ping-pong ball, trying to pick it up now ---
             case State.PICKUP:
+                robot_pose: Pose2 | None = SensorThread["localization.pose"]
+
                 # Handle ball tracking and fallback to SEARCH
-                if self.track_ball(now) or self._ball_points is None or self._pid_controller is None:
+                if robot_pose is None or self.track_ball(now) or self._ball_points is None or self._pid_controller is None:
                     self._ball_points = None
                     self.STATE = State.SEARCH
                     return
@@ -132,18 +135,28 @@ class ControllerThread(PiThread):
                 controller.set_intake_position(45)
                 controller.set_intake_power(1.0)
 
-                # Control heading and approach ball (use relative coordinates)
-                bx, by = self._ball_points[0].x, self._ball_points[0].y
-                if abs(bx) < 1e-3:
-                    bx = 1e-3 # very, very rare edge case
-                e_h = normalize_angle(math.atan2(by, bx)) # Heading error (rad)
+                # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
+                dx = self._ball_points[1].x - robot_pose.COORDS.x
+                dy = self._ball_points[1].y - robot_pose.COORDS.y
+                cos = math.cos(robot_pose.h)
+                sin = math.sin(robot_pose.h)
+
+                # Rotate displacement vector to get error
+                e_x =  dx*cos + dy*sin
+                e_y = -dx*sin + dy*cos
+
+                if abs(e_x) < 1e-3:
+                    e_x = 1e-3 # very, very rare edge case
+                e_h = normalize_angle(math.atan2(e_y, e_x)) # Heading error (rad)
                 k = math.exp(-e_h*e_h*self.HEADING_PRIORITY)
 
                 # Control outputs
                 speed = k*self.MAX_PICKUP_SPEED
                 angle = self._pid_controller.update(e_h)
                 controller.drive_speed_angle(speed, angle)
-            
+                
+                WebSocketInterface.send_variable(self, "control.output.speed", str(speed))
+                WebSocketInterface.send_variable(self, "control.output.angle", str(angle))
 
             # --- The robot is transferring the ball to its bin ---
             case State.TRANSFER:

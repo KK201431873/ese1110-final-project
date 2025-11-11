@@ -14,6 +14,7 @@ class IoTMinimapThread(PiThread):
     ROBOT_POSE: Pose2 | None
     """Global robot X and Y coordinates in meters and heading in radians."""
 
+    # === Loaded parameters ===
     BG_COLOR: tuple[int, int, int]
     """BGR background color."""
 
@@ -44,6 +45,13 @@ class IoTMinimapThread(PiThread):
     wheel_base: float
     """Distance between the left and right wheels, in meters."""
 
+    trail_length: int
+    """Length of "track marks" left by robot while driving (number of list items)."""
+
+    trail: list[tuple[Vector2, Vector2]]
+    """A list of "track mark" coordinates in meters, where the first & second values are the left & right trails, respectively."""
+
+    # === Calculated parameters ===
     aspect_ratio: float
     """Width divided by height."""
 
@@ -69,6 +77,8 @@ class IoTMinimapThread(PiThread):
         self.w, self.h = tuple(minimap_settings["minimap_size"])
         self.width_meters = minimap_settings["width_meters"]
         self.meter_subdivisions = minimap_settings["meter_subdivisions"]
+        self.trail_length = minimap_settings["trail_length"]
+        self.trail = []
         # From drive config, but still used here
         self.wheel_base = settings["drive_config"]["wheel_base"]
 
@@ -131,6 +141,43 @@ class IoTMinimapThread(PiThread):
             color = self.MAJOR_COLOR if is_major else self.MINOR_COLOR
             cv2.line(minimap, (0, y_px), (self.w, y_px), color, 1, cv2.LINE_AA)
 
+        # --- Update and draw track marks ---
+        # Helper function
+        def real_to_px(real_coords: Vector2) -> tuple[int, int]:
+            """Convert the given coordinates in meters to pixel coordinates, using the robot's current pose."""
+            px = int(center[0] + px_per_m * (real_coords.x - robot_pose.COORDS.x))
+            py = int(center[1] - px_per_m * (real_coords.y - robot_pose.COORDS.y))
+            return (px, py)
+        
+        # Update trail list
+        heading_line = Vector2(self.wheel_base/2, 0).rotate(robot_pose.h)
+        left_point = robot_pose.COORDS + heading_line.rotate(math.pi/2)
+        right_point = robot_pose.COORDS + heading_line.rotate(-math.pi/2)
+        self.trail.append((left_point, right_point))
+        while len(self.trail) > self.trail_length:
+            del self.trail[0] # truncate list to maximum length
+
+        # Draw trails
+        def index_to_color(i: int) -> tuple[int, int, int]:
+            """Gets the appropriate grayscale color for the given segment of the trail list."""
+            proportion = (self.trail_length - (len(self.trail) - i)) / self.trail_length
+            value: int = int(self.BG_COLOR[0] + proportion * (255 - self.BG_COLOR[0]))
+            return (value, value, value)
+
+        if len(self.trail) > 1:
+            left_trail = [points[0] for points in self.trail]
+            right_trail = [points[1] for points in self.trail]
+            for i in range(len(left_trail)-1):
+                color = index_to_color(i)
+                # left
+                p1l = real_to_px(left_trail[i])
+                p2l = real_to_px(left_trail[i+1])
+                cv2.line(minimap, p1l, p2l, color, 1, cv2.LINE_AA)
+                # right
+                p1r = real_to_px(right_trail[i])
+                p2r = real_to_px(right_trail[i+1])
+                cv2.line(minimap, p1r, p2r, color, 1, cv2.LINE_AA)
+
         # --- Draw robot in center ---
         bot_side_length = int(self.wheel_base * px_per_m)
         rect = (center, (bot_side_length, bot_side_length), -math.degrees(robot_pose.h)) 
@@ -151,13 +198,14 @@ class IoTMinimapThread(PiThread):
 
         # --- Draw detections ---
         # Helper function
-        def draw_ball(ball: Vector2, color: tuple[int, int, int]) -> None:
-            bx = int(center[0] + px_per_m * (ball.x - robot_pose.COORDS.x))
-            by = int(center[1] - px_per_m * (ball.y - robot_pose.COORDS.y))
+        def draw_ball(ball: Vector2, color: tuple[int, int, int]) -> tuple[int, int]:
+            """Draw the current ball, and return its converted pixel coordinates."""
+            bx, by = real_to_px(ball)
             # Skip if outside image bounds
             if not (0 <= bx < self.w and 0 <= by < self.h):
-                return
+                return (-1, -1)
             cv2.circle(minimap, (bx, by), 6, color, thickness=cv2.FILLED, lineType=cv2.LINE_AA)
+            return (bx, by)
 
         # First draw all current detections
         detection_points: dict[str, list[Vector2]] = CameraThread["detection.points"] or {
@@ -173,7 +221,11 @@ class IoTMinimapThread(PiThread):
         # Then draw currently targeted ball
         target_ball_points: tuple[Vector2, Vector2] | None = ControllerThread["target_ball_points"]
         if target_ball_points is not None:
-            draw_ball(target_ball_points[1], self.BEST_DETECTION_COLOR) # Absolute position of closest ball
+            target_px = draw_ball(target_ball_points[1], self.BEST_DETECTION_COLOR) # Absolute position of closest ball
+
+            # Draw desired trajectory
+            if target_px[0]>=0 and target_px[1]>=0:
+                cv2.line(minimap, center, target_px, (0, 255, 255), thickness=1, lineType=cv2.LINE_AA)
             
         return minimap
 

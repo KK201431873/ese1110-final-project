@@ -68,7 +68,7 @@ controller_thread:
 iot_camera_feed_thread:
   frequency: 10
 
-  # Dimensions of the video feed frame, in pixels
+  # Dimensions of the video feed frame, in pixels.
   resized_size: [320, 240]
 
 
@@ -82,18 +82,21 @@ iot_minimap_thread:
   FAR_DETECTION_COLOR: [93, 206, 250]
   BEST_DETECTION_COLOR: [50, 129, 239]
 
-  # Dimensions of the minimap image, in pixels
+  # Dimensions of the minimap image, in pixels.
   minimap_size: [640, 320]
 
-  # Physical width represented by the minimap
+  # Physical width represented by the minimap.
   width_meters: 4.0 
 
-  # Number of equally-spaced grid lines drawn per meter 
+  # Number of equally-spaced grid lines drawn per meter.
   meter_subdivisions: 4
+
+  # Length of "track marks" left by robot while driving (number of list items).
+  trail_length: 80
 
 
 sensor_thread:
-  frequency: 25
+  frequency: 100
 
   # Maximum number of lines to read from the serial interface per loop.
   max_lines_read_per_loop: 10
