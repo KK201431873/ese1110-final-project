@@ -128,7 +128,7 @@ class ArduinoSerialInterface():
                 cls._actuator = _SerialChannel(settings["actuator_port"], baudrate)
 
     @classmethod
-    def read_lines(cls, which_thread: type[PiThread] | PiThread | str, max_lines: int = 10) -> list[str]:
+    def read_lines(cls, which_thread: type[PiThread] | PiThread | str, max_lines: int = 5) -> list[str]:
         cls._ensure_init()
         if cls._sensor:
             return cls._sensor.read_lines(which_thread, max_lines)

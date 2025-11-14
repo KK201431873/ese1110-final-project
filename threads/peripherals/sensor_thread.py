@@ -78,95 +78,31 @@ class SensorThread(PiThread):
         
         # Parse data lines
         for line in data_lines:
-            split_line = line.split(":", 1)
-            if len(split_line) != 2:
-                continue
-
-            key, value = split_line
-            entry = sensor_variables.get(key)
-            if entry:
-                try:
-                    cast_value = entry.cast(value)
-                    self[key] = cast_value # Write to global data
-                    # WebSocketInterface.send_variable(self, key, value)
-                    # self.print(f"Received {key}: {self[key]} {type(self[key])}")
-                except ValueError:
-                    self.print(f"Bad value for key {key}: {value}")
-        
-        # Localization
-        self.do_encoder_localization()
-        # self.do_IMU_localization()
-
+            # Variables are formatted with comma delineators, e.g:
+            # sensor.imu.roll:10,sensor.imu.pitch:30,sensor.imu.yaw:90,...
+            split_variables = line.split(",")
+            for variable in split_variables:
+                split_var = variable.split(":", 1)
+                if len(split_var) != 2:
+                    continue
+                
+                # Process split variable
+                key, value = split_var
+                entry = sensor_variables.get(key)
+                if entry:
+                    try:
+                        cast_value = entry.cast(value)
+                        self[key] = cast_value # Write to global data
+                        WebSocketInterface.send_variable(self, key, value)
+                        # self.print(f"Received {key}: {self[key]} {type(self[key])}")
+                    except ValueError:
+                        self.print(f"Bad value for key {key}: {value}")
+    
         # Share robot pose
         self.broadcast_robot_pose()
-    
-    def do_encoder_localization(self) -> None:
-        # Try reading values
-        encoder_left = self["sensor.encoder.left"]
-        encoder_right = self["sensor.encoder.right"]
-        if encoder_left is None or encoder_right is None:
-            return
-        
-        # Check if first loop
-        if self._last_encoder_left is None or self._last_encoder_right is None:
-            self._last_encoder_left = encoder_left
-            self._last_encoder_right = encoder_right
-            return
-        
-        # Calculate differences
-        delta_left = encoder_left - self._last_encoder_left
-        delta_right = encoder_right - self._last_encoder_right
-
-        # Update last encoder values
-        self._last_encoder_left = encoder_left
-        self._last_encoder_right = encoder_right
-
-        # Calculate distance traveled by each wheel
-        distance_left = (delta_left / self._ticks_per_rev) * (math.pi * self._wheel_diameter) / self._gear_ratio
-        distance_right = (delta_right / self._ticks_per_rev) * (math.pi * self._wheel_diameter) / self._gear_ratio
-
-        # Calculate change in orientation and position
-        delta_distance = (distance_left + distance_right) / 2
-        delta_heading = (distance_right - distance_left) / self._wheel_base
-
-        # Update robot's pose
-        old_X = self.ROBOT_POSE.COORDS.x
-        old_Y = self.ROBOT_POSE.COORDS.y
-        old_H = self.ROBOT_POSE.h
-
-        new_X = old_X + delta_distance * math.cos(old_H + delta_heading / 2)
-        new_Y = old_Y + delta_distance * math.sin(old_H + delta_heading / 2)
-        new_H = normalize_angle(old_H + delta_heading)
-
-        self.ROBOT_POSE = Pose2(
-            Vector2(new_X, new_Y),
-            new_H
-        )
-
-    def do_IMU_localization(self) -> None:
-        # Fuse with IMU yaw
-        imu_yaw = self["sensor.imu.yaw"]
-        if imu_yaw is not None:
-            imu_yaw = math.radians(imu_yaw)
-
-            old_X = self.ROBOT_POSE.COORDS.x
-            old_Y = self.ROBOT_POSE.COORDS.y
-            old_H = self.ROBOT_POSE.h
-
-            # Calculate weighted average of angles
-            x_h, y_h = math.cos(old_H), math.sin(old_H)
-            x_imu, y_imu = math.cos(imu_yaw), math.sin(imu_yaw)
-            x_bar = self._alpha * x_imu + (1 - self._alpha) * x_h
-            y_bar = self._alpha * y_imu + (1 - self._alpha) * y_h
-            new_H = math.atan2(y_bar, x_bar)
-
-            self.ROBOT_POSE = Pose2(
-                Vector2(old_X, old_Y),
-                new_H
-            )
 
     def broadcast_robot_pose(self) -> None:
-        self["localization.pose"] = self.ROBOT_POSE
+        self.ROBOT_POSE = self["localization.pose"] or self.ROBOT_POSE
         WebSocketInterface.send_variable(self, "localization.pose.x", str(round(self.ROBOT_POSE.COORDS.x, 3)))
         WebSocketInterface.send_variable(self, "localization.pose.y", str(round(self.ROBOT_POSE.COORDS.y, 3)))
         WebSocketInterface.send_variable(self, "localization.pose.h", str(round(math.degrees(self.ROBOT_POSE.h), 2)))

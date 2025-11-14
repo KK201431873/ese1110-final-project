@@ -96,10 +96,10 @@ iot_minimap_thread:
 
 
 sensor_thread:
-  frequency: 100
+  frequency: 30
 
   # Maximum number of lines to read from the serial interface per loop.
-  max_lines_read_per_loop: 10
+  max_lines_read_per_loop: 5
   
   # Filter coefficient between IMU yaw and motor encoder localization. Must be between 0 and 1.
   # Values closer to 1 give more weight to the IMU.
