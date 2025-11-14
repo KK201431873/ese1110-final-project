@@ -1,5 +1,5 @@
 """
-Defines the expected sensor variable keys and their data types for Arduino -> Raspberry Pi communication.
+Defines the expected sensor variable keys and their data types for peripheral MCU -> Raspberry Pi communication.
 
 Expected serial message format:
     <key>:<value>\n

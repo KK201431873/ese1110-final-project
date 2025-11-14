@@ -1,4 +1,4 @@
-from utils.arduino_serial_interface import ArduinoSerialInterface
+from utils.mcu_serial_interface import MCUSerialInterface
 from utils.websocket_interface import WebSocketInterface
 from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
@@ -71,7 +71,7 @@ class SensorThread(PiThread):
         self.print("Alive!")
 
     def _loop_impl(self) -> None:
-        data_lines = ArduinoSerialInterface.read_lines(which_thread=self, max_lines=self._max_lines_read_per_loop)
+        data_lines = MCUSerialInterface.read_lines(which_thread=self, max_lines=self._max_lines_read_per_loop)
         # self.print(f"Read {len(data_lines)} lines from serial")
         if not data_lines:
             return
@@ -108,4 +108,4 @@ class SensorThread(PiThread):
         WebSocketInterface.send_variable(self, "localization.pose.h", str(round(math.degrees(self.ROBOT_POSE.h), 2)))
 
     def _on_shutdown_impl(self) -> None:
-        ArduinoSerialInterface.close_all()
+        MCUSerialInterface.close_all()

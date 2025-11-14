@@ -5,16 +5,16 @@ import threading
 import serial
 import time
 
-settings = load_settings()["arduino_serial_interface"]
+settings = load_settings()["mcu_serial_interface"]
 baudrate: int = settings["baudrate"]
 
 class _SerialChannel:
     def __init__(self, port: str, baudrate: int):
         self._port = port
-        """Path ending with an Arduino ID."""
+        """Path ending with an MCU ID."""
 
         self._baudrate = baudrate
-        """Sync with Arduino, usually 115200."""
+        """Sync with MCUs, usually 115200."""
 
         self._ser: serial.Serial | None = None
         """Serial communication channel."""
@@ -46,7 +46,7 @@ class _SerialChannel:
     def read_lines(self, 
                    which_thread: type[PiThread] | PiThread | str, 
                    max_lines: int = 10) -> list[str]:
-        """Read up to `max_lines` complete lines (ending with '\n')."""
+        """Read up to `max_lines` complete lines from peripheral MCU (ending with '\n')."""
         lines: list[str] = []
         with self._lock:
             # Check serial channel status
@@ -85,7 +85,7 @@ class _SerialChannel:
         return lines
         
     def write_line(self, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
-        """Thread-safe write a line to Arduino serial channel."""
+        """Thread-safe write a line to actuator MCU serial channel."""
         with self._lock:
             # Check serial channel status
             self._ensure_open(which_thread)
@@ -109,12 +109,12 @@ class _SerialChannel:
     
 
 
-class ArduinoSerialInterface():
-    _sensor: _SerialChannel | None = None
-    """Arduino WIFI reads sensor data and Pi receives it here."""
+class MCUSerialInterface():
+    _peripheral: _SerialChannel | None = None
+    """Peripheral MCU reads & sends sensor data, Pi receives it here."""
 
     _actuator: _SerialChannel | None = None
-    """Pi sends commands to Arduino Minima, which controls actuators."""
+    """Pi sends commands to actuator MCU, which controls motors & servos."""
 
     _init_lock = threading.Lock()
     """Lock for initializing serial channels."""
@@ -122,16 +122,16 @@ class ArduinoSerialInterface():
     @classmethod
     def _ensure_init(cls):
         with cls._init_lock:
-            if cls._sensor is None:
-                cls._sensor = _SerialChannel(settings["sensor_port"], baudrate)
+            if cls._peripheral is None:
+                cls._peripheral = _SerialChannel(settings["sensor_port"], baudrate)
             if cls._actuator is None:
                 cls._actuator = _SerialChannel(settings["actuator_port"], baudrate)
 
     @classmethod
     def read_lines(cls, which_thread: type[PiThread] | PiThread | str, max_lines: int = 5) -> list[str]:
         cls._ensure_init()
-        if cls._sensor:
-            return cls._sensor.read_lines(which_thread, max_lines)
+        if cls._peripheral:
+            return cls._peripheral.read_lines(which_thread, max_lines)
         else:
             return []
 
@@ -144,7 +144,7 @@ class ArduinoSerialInterface():
     @classmethod
     def close_all(cls) -> None:
         cls._ensure_init()
-        if cls._sensor:
-            cls._sensor.close()
+        if cls._peripheral:
+            cls._peripheral.close()
         if cls._actuator:
             cls._actuator.close()
