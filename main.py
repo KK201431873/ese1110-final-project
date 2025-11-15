@@ -54,8 +54,9 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 crashed = True
             if crashed:
                 while any((t.is_alive() or t.get_alive()) for t in threading.enumerate() if isinstance(t, PiThread)):
+                    print("ENDING PROGRAM")
                     PiThread.kill_all()
-                    time.sleep(0.1)
+                    time.sleep(0.25)
                 break
 
             # print(f"[MAIN] Camera Thread Freq: {camera_thread.get_measured_frequency():.2f} Hz")

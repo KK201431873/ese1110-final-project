@@ -212,7 +212,7 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                 if self.name in PiThread._global_data:
                     PiThread._global_data[self.name].clear()
             del PiThread._global_data_locks[self.name]
-        if join and self.is_alive() and threading.current_thread() != self:
+        if join and threading.current_thread() != self:
             self.join()
     
     @classmethod

@@ -1,8 +1,9 @@
 from utils.pi_thread import PiThread
 from utils.load_settings import load_settings
 from utils.debug import print_from, raise_error_from
-import threading
+from serial import SerialTimeoutException
 import serial
+import threading
 import time
 
 settings = load_settings()["mcu_serial_interface"]
@@ -34,7 +35,8 @@ class _SerialChannel:
                 try:
                     self._ser = serial.Serial(port=self._port,
                                             baudrate=self._baudrate,
-                                            timeout=0)  # non-blocking
+                                            timeout=0,
+                                            write_timeout=1)  # non-blocking
                     self._buffer = b""
                     time.sleep(0.1)
                 except serial.SerialException as e:
@@ -96,6 +98,8 @@ class _SerialChannel:
             # Try writing data
             try:
                 self._ser.write((data + "\n").encode())
+            except SerialTimeoutException as e:
+                raise_error_from(which_thread, SerialTimeoutException, f"Serial write timed out! (is MCU connected?): {e}")
             except Exception as e:
                 print_from(which_thread, f"Error writing to serial: {e}")
                 self._ser = None  # force reinit on next read/write
