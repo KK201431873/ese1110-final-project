@@ -42,6 +42,9 @@ class InferenceThread(PiThread):
     _model_input_size: tuple[int, int] = model_input_size
     _min_score: float = min_score
 
+    # Camera freeze detection
+    _last_frame_checksum: int = 0
+
     def _on_created_impl(self) -> None:
         
         # Initialize ONNX Runtime
@@ -64,8 +67,8 @@ class InferenceThread(PiThread):
         self.ROBOT_POSE = SensorThread["localization.pose"]
 
         # Get frame and run inference
-        frame: npt.NDArray | None = CameraThread["frame"]
-        if frame is None:
+        frame, ok = self._get_frame()
+        if (not ok) or (frame is None):
             self["detection.frame"] = None
             detection_points: dict[str, list[Vector2]] = { "relative_points": [], "absolute_points": [] }
             self["detection.points"] = detection_points
@@ -128,6 +131,18 @@ class InferenceThread(PiThread):
             "absolute_points": absolute_points
         }
         self["detection.points"] = detection_points
+
+    def _get_frame(self) -> tuple[npt.NDArray, bool]:
+        """Returns the camera's frame and whether or not the returned frame should be used."""
+        frame: npt.NDArray | None = CameraThread["frame"]
+        if frame is None:
+            return np.zeros((1)), False
+
+        # Check if camera froze
+        checksum = int(np.sum(frame))
+        ok = checksum != self._last_frame_checksum
+        self._last_frame_checksum = checksum
+        return frame, ok
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
         """
