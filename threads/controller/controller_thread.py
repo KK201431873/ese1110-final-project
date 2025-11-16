@@ -106,7 +106,7 @@ class ControllerThread(PiThread):
                 # controller.set_right_drive_power(0.25)
 
                 # Raise and stop intake
-                # controller.set_intake_position(90)
+                # controller.set_intake_position(0)
                 # controller.set_intake_power(0.0)
                 
                 # Go PICKUP if a ball is detected
@@ -126,35 +126,41 @@ class ControllerThread(PiThread):
                 robot_pose: Pose2 | None = SensorThread["localization.pose"]
 
                 # Handle ball tracking and fallback to SEARCH
-                if robot_pose is None or self.track_ball(now) or self._ball_points is None or self._pid_controller is None:
+                change_state, ball_detected = self.track_ball(now)
+                if change_state or robot_pose is None or self._ball_points is None or self._pid_controller is None:
                     self._ball_points = None
                     self.STATE = State.SEARCH
                     return
-
-                # Lower and run intake
-                controller.set_intake_position(45)
-                controller.set_intake_power(1.0)
-
-                # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
-                dx = self._ball_points[1].x - robot_pose.COORDS.x
-                dy = self._ball_points[1].y - robot_pose.COORDS.y
-                cos = math.cos(robot_pose.h)
-                sin = math.sin(robot_pose.h)
-
-                # Rotate displacement vector to get error
-                e_x =  dx*cos + dy*sin
-                e_y = -dx*sin + dy*cos
-
-                if abs(e_x) < 1e-3:
-                    e_x = 1e-3 # very, very rare edge case
-                e_h = normalize_angle(math.atan2(e_y, e_x)) # Heading error (rad)
-                k = math.exp(-e_h*e_h*self.HEADING_PRIORITY)
-
-                # Control outputs
-                speed = k*self.MAX_PICKUP_SPEED
-                angle = self._pid_controller.update(e_h)
-                controller.drive_speed_angle(speed, angle)
                 
+                # Lower and run intake
+                controller.set_intake_position(0.15)
+                controller.set_intake_power(1.0)
+                
+                if ball_detected:
+                    # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
+                    dx = self._ball_points[1].x - robot_pose.COORDS.x
+                    dy = self._ball_points[1].y - robot_pose.COORDS.y
+                    cos = math.cos(robot_pose.h)
+                    sin = math.sin(robot_pose.h)
+
+                    # Rotate displacement vector to get error
+                    e_x =  dx*cos + dy*sin
+                    e_y = -dx*sin + dy*cos
+
+                    if abs(e_x) < 1e-3:
+                        e_x = 1e-3 # very, very rare edge case
+                    e_h = normalize_angle(math.atan2(e_y, e_x)) # Heading error (rad)
+                    k = math.exp(-e_h*e_h*self.HEADING_PRIORITY)
+
+                    # Control outputs
+                    speed = k*self.MAX_PICKUP_SPEED
+                    angle = self._pid_controller.update(e_h)
+                else:
+                    # Don't drive if no ball detected
+                    speed = 0
+                    angle = 0
+                
+                controller.drive_speed_angle(speed, angle)
                 WebSocketInterface.send_variable(self, "control.output.speed", str(speed))
                 WebSocketInterface.send_variable(self, "control.output.angle", str(angle))
 
@@ -192,17 +198,18 @@ class ControllerThread(PiThread):
 
         return closest_ball_points # (Relative, Absolute) coordinates of closest ball
 
-    def track_ball(self, now: float) -> bool:
+    def track_ball(self, now: float) -> tuple[bool, bool]:
         """
         Runs ball-tracking logic.
         Args:
             now (float): the current loop time in seconds.
         Returns:
-            change_state (bool): True if need to switch back to SEARCH state.
+            (bool, bool): First argument True if need to switch back to SEARCH state, second
+            argument True if ball has been detected this frame.
         """
         # This should never happen ----
         if self._ball_points is None or self._pid_controller is None:
-            return True
+            return True, False
         # -----------------------------
 
         # Update ball position
@@ -211,7 +218,8 @@ class ControllerThread(PiThread):
         if closest_ball_points is None:
             # Go SEARCH if no ball detected for a while
             if now - self._last_detection_time > self.NO_DETECTION_TIMEOUT:
-                return True
+                return True, False
+            return False, False
         else:
             # Check if current detection timed out
             update_position = now - self._last_retarget_time > self.BALL_MAX_LIFESPAN
@@ -226,4 +234,4 @@ class ControllerThread(PiThread):
             # Always refresh detection time if ball visible
             self._last_detection_time = now
             
-        return False # Detections are fine, no need for state switch
+            return False, True # Detections are fine, no need for state switch

@@ -29,6 +29,9 @@ class WebSocketInterface():
     @classmethod
     def _connect_in_background(cls, which_thread: type[PiThread] | PiThread | str):
         """Background thread function to connect to WebSocket."""
+        if PiThread.has_crashed():
+            return
+        
         with cls._lock:
             if cls._connecting:
                 return
@@ -38,7 +41,15 @@ class WebSocketInterface():
             print_from(which_thread, f"Connecting to {cls._server_ws}...")
             ws = websocket.WebSocket()
             ws.connect(cls._server_ws, timeout=2)
+
+            if PiThread.has_crashed():
+                return
+            
             ws.send(str(cls._pi_stream_password))
+
+            if PiThread.has_crashed():
+                return
+
             with cls._lock:
                 cls._ws = ws
             print_from(which_thread, f"Connected successfully to {cls._server_ws}")

@@ -54,7 +54,6 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 crashed = True
             if crashed:
                 while any((t.is_alive() or t.get_alive()) for t in threading.enumerate() if isinstance(t, PiThread)):
-                    print("ENDING PROGRAM")
                     PiThread.kill_all()
                     time.sleep(0.25)
                 break
@@ -71,7 +70,7 @@ def main(with_watchdog: bool = True, show_camera: bool = False):
                 cv2.waitKey(20)
             else:
                 time.sleep(0.1)
-    
+            
     # --- Exit condition ---
     except KeyboardInterrupt:
         PiThread.kill_all()
