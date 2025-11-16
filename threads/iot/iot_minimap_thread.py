@@ -4,7 +4,7 @@ from utils.websocket_interface import WebSocketInterface
 from utils.pose2 import Pose2
 from utils.vector2 import Vector2
 from threads.peripherals.sensor_thread import SensorThread
-from threads.vision.camera_thread import CameraThread
+from threads.vision.inference_thread import InferenceThread
 from threads.controller.controller_thread import ControllerThread
 import numpy as np
 import math
@@ -208,7 +208,7 @@ class IoTMinimapThread(PiThread):
             return (bx, by)
 
         # First draw all current detections
-        detection_points: dict[str, list[Vector2]] = CameraThread["detection.points"] or {
+        detection_points: dict[str, list[Vector2]] = InferenceThread["detection.points"] or {
             "relative_points": [],
             "absolute_points": []
         }

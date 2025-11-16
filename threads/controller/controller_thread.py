@@ -3,7 +3,7 @@ from utils.load_settings import load_settings
 from utils.websocket_interface import WebSocketInterface
 from utils.vector2 import Vector2
 from utils.pose2 import Pose2
-from threads.vision.camera_thread import CameraThread
+from threads.vision.inference_thread import InferenceThread
 from threads.peripherals.sensor_thread import SensorThread
 from .algorithm.pid_controller import PIDController
 from . import controller_serial_interface as controller
@@ -183,7 +183,7 @@ class ControllerThread(PiThread):
     
     def get_closest_ball_points(self) -> tuple[Vector2, Vector2] | None:
         # Get and check points from camera (dictionary with equal-sized lists of relative and absolute ball detection coordinates)
-        detection_points: dict[str, list[Vector2]] = CameraThread["detection.points"] or {
+        detection_points: dict[str, list[Vector2]] = InferenceThread["detection.points"] or {
             "relative_points": [],
             "absolute_points": []
         }

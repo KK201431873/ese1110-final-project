@@ -1,6 +1,7 @@
 main:
   with_watchdog: true
-  show_camera: true
+  show_camera: false
+  show_detections: true
 
 
 mcu_serial_interface:
@@ -107,23 +108,27 @@ sensor_thread:
 
 
 camera_thread:
+  frequency: 30
+
+  # Camera output frame size, in pixels
+  frame_size: [640, 480]
+
+  # Camera module exposure time, in microseconds
+  exposure_time: 5000
+
+
+inference_thread:
   frequency: 10
 
   # --- Model config ---
   # Path to the YOLO model
   model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
 
-  # Camera output frame size, in pixels
-  frame_size: [640, 480]
-
   # Model input frame size, in pixels
   model_input_size: [256, 256]
 
   # Reject detections with confidence lower than this threshold
   min_score: 0.3
-
-  # Camera module exposure time, in microseconds
-  exposure_time: 5000
 
   # --- Pose estimation config---
   # We assume the bottom edge of the camera is parallel with the plane of the floor.
