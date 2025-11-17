@@ -60,10 +60,19 @@ controller_thread:
   # Proportion of maximum linear velocity to cap speed at during PICKUP.
   MAX_PICKUP_SPEED: 0.5
 
+  # Coefficient multiplied to distance from target ball to get speed.
+  SPEED_kP: 100.0
+
   # PID tuning constants
   kP: 1.0
   kI: 0.0
   kD: 0.0
+
+  # TEMPORARY VARIABLE (we don't have ball sensor) Distance threshold to assume we picked up a ball and change to TRANSFER state (meters).
+  BALL_PICKUP_THRESHOLD: 0.1
+
+  # Amount of time to remain in the TRANSFER state, must be long enough for ball to fall into bin (seconds).
+  TRANSFER_DURATION: 3.0
 
 
 iot_camera_feed_thread:
