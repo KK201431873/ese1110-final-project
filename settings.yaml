@@ -163,7 +163,7 @@ inference_thread:
   fov_y: 41
   
   # The camera's positive angle from the vertical (degrees)
-  lens_incline: 23
+  lens_incline: 21 # TODO: CONFIRM
 
   # The height of the camera lens from the ground (m)
   lens_height: 0.20
