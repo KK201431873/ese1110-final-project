@@ -6,7 +6,8 @@ main:
 
 mcu_serial_interface:
   # Path to the USB serial ports for each MCU
-  sensor_port: "/dev/serial/by-id/usb-Arduino_UNO_WiFi_R4_CMSIS-DAP_F412FA9E65A0-if01"
+  # How to check what serial devices are connected: ls /dev/serial/by-id
+  sensor_port: "/dev/serial/by-id/usb-Teensyduino_USB_Serial_18483060-if00"
   actuator_port: "/dev/serial/by-id/usb-Arduino_UNO_R4_Minima_38080C1A37323335DBC233324B572D3A-if00"
 
   # Baudrate, must be same as both MCU's
