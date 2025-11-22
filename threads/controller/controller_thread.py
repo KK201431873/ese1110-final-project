@@ -126,7 +126,7 @@ class ControllerThread(PiThread):
                 controller.set_right_drive_power(0.25)
 
                 # Raise and stop intake
-                controller.set_intake_position(0)
+                controller.set_intake_position(0.5)
                 controller.set_intake_power(0.0)
                 
                 # Go PICKUP if a ball is detected
@@ -153,7 +153,7 @@ class ControllerThread(PiThread):
                     return
                 
                 # Lower and run intake
-                controller.set_intake_position(0.15)
+                controller.set_intake_position(0.4)
                 controller.set_intake_power(1.0)
                 
                 # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
@@ -193,7 +193,7 @@ class ControllerThread(PiThread):
             case State.TRANSFER:
                 # Stop moving, raise intake, keep running rollers
                 controller.stop_drive()
-                controller.set_intake_position(0)
+                controller.set_intake_position(0.5)
                 controller.set_intake_power(1.0)
 
                 # State change logic

@@ -25,10 +25,10 @@ def stop_drive() -> None:
     set_left_drive_power(0.0)
     set_right_drive_power(0.0)
 
-def set_intake_position(degrees: float) -> None:
+def set_intake_position(position: float) -> None:
     """Set the position of the intake servo. Position must be between `0.0` and `1.0`."""
-    degrees = clamp(degrees, 0.0, 1.0)
-    MCUSerialInterface.write_line("ControllerThread", f"command.intake.servo:{degrees}")
+    position = clamp(position, 0.0, 1.0)
+    MCUSerialInterface.write_line("ControllerThread", f"command.intake.position:{position}")
 
 def set_intake_power(power: float) -> None:
     """Set the power of the intake motor. Power must be between `-1.0` and `1.0`."""

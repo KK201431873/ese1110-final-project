@@ -46,6 +46,9 @@ class CameraThread(PiThread):
             frame = req.make_array("main")
             frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
+            # Camera is mounted upside-down due to space constraints
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+
             self["frame"] = frame
 
         finally:
