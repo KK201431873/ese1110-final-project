@@ -5,6 +5,7 @@ from utils.vector2 import Vector2
 from utils.pose2 import Pose2
 from threads.vision.inference_thread import InferenceThread
 from threads.peripherals.sensor_thread import SensorThread
+from threads.iot.iot_receive_thread import IoTReceiveThread
 from .algorithm.pid_controller import PIDController
 from . import controller_serial_interface as controller
 from enum import Enum
@@ -31,6 +32,13 @@ class State(Enum):
 class ControllerThread(PiThread):
     STATE: State
     """Current state of the controller."""
+
+    USE_IOT_COMMANDS: bool
+    """Whether or not to run robot based on IoT commands."""
+
+    # Tuned values
+    INTAKE_UP_POS: float
+    INTAKE_DOWN_POS: float
 
     NO_DETECTION_TIMEOUT: float
     """Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds)."""
@@ -83,6 +91,9 @@ class ControllerThread(PiThread):
         # Load config
         settings = load_settings()
         controller_settings = settings["controller_thread"]
+        self.USE_IOT_COMMANDS = controller_settings["USE_IOT_COMMANDS"]
+        self.INTAKE_UP_POS = controller_settings["INTAKE_UP_POS"]
+        self.INTAKE_DOWN_POS = controller_settings["INTAKE_DOWN_POS"]
         self.NO_DETECTION_TIMEOUT = controller_settings["NO_DETECTION_TIMEOUT"]
         self.BALL_MAX_LIFESPAN = controller_settings["BALL_MAX_LIFESPAN"]
         self.BALL_MAX_DRIFT = controller_settings["BALL_MAX_DRIFT"]
@@ -108,6 +119,16 @@ class ControllerThread(PiThread):
 
     def _loop_impl(self) -> None:
         now = time.perf_counter()
+
+        # === IoT Control ===
+        if self.USE_IOT_COMMANDS:
+            running = IoTReceiveThread["running"]
+            if not running:
+                controller.stop_drive()
+                controller.set_intake_position(self.INTAKE_UP_POS)
+                controller.set_intake_power(0.0)
+                return
+
         
         # self.print(f"State: {self.STATE}, Target: {self.target_relative_position}")
 
@@ -126,7 +147,7 @@ class ControllerThread(PiThread):
                 controller.set_right_drive_power(0.25)
 
                 # Raise and stop intake
-                controller.set_intake_position(0.5)
+                controller.set_intake_position(self.INTAKE_UP_POS)
                 controller.set_intake_power(0.0)
                 
                 # Go PICKUP if a ball is detected
@@ -153,7 +174,7 @@ class ControllerThread(PiThread):
                     return
                 
                 # Lower and run intake
-                controller.set_intake_position(0.4)
+                controller.set_intake_position(self.INTAKE_DOWN_POS)
                 controller.set_intake_power(1.0)
                 
                 # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
@@ -193,7 +214,7 @@ class ControllerThread(PiThread):
             case State.TRANSFER:
                 # Stop moving, raise intake, keep running rollers
                 controller.stop_drive()
-                controller.set_intake_position(0.5)
+                controller.set_intake_position(self.INTAKE_UP_POS)
                 controller.set_intake_power(1.0)
 
                 # State change logic

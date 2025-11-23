@@ -1,6 +1,8 @@
 from utils.pi_thread import PiThread
 from utils.load_settings import load_settings
 from utils.debug import print_from, raise_error_from
+from collections import deque
+import socket
 import numpy as np
 import threading
 import websocket
@@ -23,9 +25,20 @@ class WebSocketInterface():
     _lock: threading.Lock = threading.Lock()
     """Lock for accessing WebSocket."""
 
-    _connect_thread: threading.Thread | None = None
-    _connecting: bool = False
+    _recv_queue = deque()
+    """Queue for storing received messages."""
 
+    _recv_lock = threading.Lock()
+    """Lock for receiving data from WebSocket."""
+
+    _connect_thread: threading.Thread | None = None
+    """Background thread that connects to WS at the start of the program."""
+
+    _connecting: bool = False
+    """Is connecting to WS or not."""
+
+
+    # === Setup methods ===
     @classmethod
     def _connect_in_background(cls, which_thread: type[PiThread] | PiThread | str):
         """Background thread function to connect to WebSocket."""
@@ -99,8 +112,8 @@ class WebSocketInterface():
             with cls._lock:
                 cls._ws = None
 
-    # === Public send functions ===
 
+    # === Public send functions ===
     @classmethod
     def send_frame(cls, which_thread: type[PiThread] | PiThread | str, frame: np.ndarray) -> None:
         """Thread-safe send a frame to the WebSocket server."""
@@ -132,7 +145,64 @@ class WebSocketInterface():
             cls._safe_send(which_thread, b"\x03", jpeg.tobytes())
         except Exception as e:
             print_from(which_thread, f"send_minimap error: {e}")
+
+
+    # === Public receive functions ===
+    @classmethod
+    def _safe_recv(cls, which_thread: type[PiThread] | PiThread | str) -> str | None:
+        """Attempt non-blocking receive. Returns None if no message."""
+        with cls._lock:
+            ws = cls._ws
+
+        if ws is None or not ws.connected:
+            return None
+
+        try:
+            # Non-blocking receive: use low timeout
+            ws.settimeout(0.0001)
+            msg = ws.recv()
+            ws.settimeout(None)
+
+            # Only process text commands like "CMD:XYZ"
+            if isinstance(msg, str) and msg.startswith("CMD:"):
+                return msg[4:]  # Extract "XYZ"
+
+            return None
+
+        except websocket.WebSocketTimeoutException:
+            return None  # no data
+        except (websocket.WebSocketConnectionClosedException, OSError, socket.error) as e:
+            print_from(which_thread, f"WebSocket recv error: {e}")
+            with cls._lock:
+                cls._ws = None
+            return None
+        except Exception as e:
+            print_from(which_thread, f"Unexpected recv error: {e}")
+            return None
+        
+    @classmethod
+    def _queue_command(cls, cmd: str) -> None:
+        with cls._recv_lock:
+            cls._recv_queue.append(cmd)
+
+    @classmethod
+    def get_command(cls) -> str | None:
+        """Return next queued command if exists."""
+        with cls._recv_lock:
+            if cls._recv_queue:
+                return cls._recv_queue.popleft()
+        return None
     
+    @classmethod
+    def poll(cls, which_thread: type[PiThread] | PiThread | str) -> None:
+        """Non-blocking check for incoming commands."""
+        cls._ensure_socket(which_thread)
+        cmd = cls._safe_recv(which_thread)
+        if cmd is not None:
+            cls._queue_command(cmd)
+
+
+    # === Close WS ===
     @classmethod
     def close(cls):
         """Close the WebSocket connection safely."""

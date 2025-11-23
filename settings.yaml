@@ -7,6 +7,7 @@ main:
 mcu_serial_interface:
   # Path to the USB serial ports for each MCU
   # How to check what serial devices are connected: ls /dev/serial/by-id
+  # If not detected, something might be shorting 5V to GND
   sensor_port: "/dev/serial/by-id/usb-Teensyduino_USB_Serial_18483060-if00"
   actuator_port: "/dev/serial/by-id/usb-Arduino_UNO_R4_Minima_38080C1A37323335DBC233324B572D3A-if00"
 
@@ -45,6 +46,13 @@ drive_config:
 
 controller_thread:
   frequency: 60
+
+  # Whether or not to run robot based on IoT commands.
+  USE_IOT_COMMANDS: true
+
+  # Tuned values
+  INTAKE_UP_POS: 0.5
+  INTAKE_DOWN_POS: 0.4
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
   NO_DETECTION_TIMEOUT: 0.5
@@ -104,6 +112,10 @@ iot_minimap_thread:
 
   # Length of "track marks" left by robot while driving (number of list items).
   trail_length: 80
+
+
+iot_receive_thread:
+  frequency: 10
 
 
 sensor_thread:

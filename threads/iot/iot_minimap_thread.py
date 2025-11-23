@@ -87,8 +87,8 @@ class IoTMinimapThread(PiThread):
         self.meters_per_pixel = self.width_meters / self.w
         self.grid_width = 1.0 / self.meter_subdivisions
 
-        # Connect to WebSocket
-        WebSocketInterface._ensure_socket(self)
+        # # Connect to WebSocket
+        # WebSocketInterface._ensure_socket(self)
 
     def _on_start_impl(self) -> None:
         self.print("Alive!")

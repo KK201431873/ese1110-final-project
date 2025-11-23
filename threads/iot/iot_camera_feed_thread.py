@@ -12,8 +12,8 @@ class IoTCameraFeedThread(PiThread):
         settings = load_settings()["iot_camera_feed_thread"]
         self._resized_size = tuple(settings["resized_size"])
 
-        # Connect to WebSocket
-        WebSocketInterface._ensure_socket(self)
+        # # Connect to WebSocket
+        # WebSocketInterface._ensure_socket(self)
 
     def _on_start_impl(self) -> None:
         self.print("Alive!")
