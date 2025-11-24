@@ -24,12 +24,6 @@ websocket_interface:
 
 
 drive_config:
-  # Maximum linear velocity (m/s).
-  v_max: 0.8
-
-  # Maximum linear acceleration (m/s^2).
-  a_max: 1.2
-
   # Encoder ticks per revolution of the wheel motor.
   ticks_per_rev: 6528
   
@@ -51,8 +45,8 @@ controller_thread:
   USE_IOT_COMMANDS: true
 
   # Tuned values
-  INTAKE_UP_POS: 0.5
-  INTAKE_DOWN_POS: 0.4
+  INTAKE_UP_POS: 0.70
+  INTAKE_DOWN_POS: 0.5
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
   NO_DETECTION_TIMEOUT: 0.5
@@ -115,7 +109,7 @@ iot_minimap_thread:
 
 
 iot_receive_thread:
-  frequency: 10
+  frequency: 30
 
 
 sensor_thread:
@@ -126,7 +120,7 @@ sensor_thread:
   
   # Filter coefficient between IMU yaw and motor encoder localization. Must be between 0 and 1.
   # Values closer to 1 give more weight to the IMU.
-  alpha: 0.5
+  alpha: 0.0
 
 
 camera_thread:

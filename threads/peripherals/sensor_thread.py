@@ -4,16 +4,8 @@ from utils.load_settings import load_settings
 from utils.pi_thread import PiThread
 from utils.vector2 import Vector2
 from utils.pose2 import Pose2
-from .sensor_thread_registers import sensor_variables
+from . import sensor_serial_interface as sensors
 import math
-
-def normalize_angle(radians: float) -> float:
-    """Normalize an angle to the range [-pi, pi)."""
-    while radians >= math.pi:
-        radians -= 2 * math.pi
-    while radians < -math.pi:
-        radians += 2 * math.pi
-    return radians
 
 class SensorThread(PiThread):
     ROBOT_POSE: Pose2
@@ -24,12 +16,6 @@ class SensorThread(PiThread):
 
     _alpha: float
     """Filter coefficient between IMU yaw and motor encoder localization."""
-
-    _last_encoder_left: float | None
-    """Last recorded value of the left encoder in ticks."""
-
-    _last_encoder_right: float | None
-    """Last recorded value of the right encoder in ticks."""
 
     _ticks_per_rev: int
     """Encoder ticks per revolution of the wheel motor."""
@@ -51,9 +37,6 @@ class SensorThread(PiThread):
         )
         self["localization.pose"] = self.ROBOT_POSE
 
-        self._last_encoder_left = None
-        self._last_encoder_right = None
-
         # Load sensor settings
         settings = load_settings()
         sensor_settings = settings["sensor_thread"]
@@ -68,35 +51,26 @@ class SensorThread(PiThread):
         self._wheel_base = drive_settings["wheel_base"]
 
     def _on_start_impl(self) -> None:
+        # Set config and reset sensors
+        sensors.set_config(
+            wheel_diameter=self._wheel_diameter,
+            wheel_base=self._wheel_base,
+            ticks_per_rev=self._ticks_per_rev,
+            gear_ratio=self._gear_ratio,
+            alpha=self._alpha
+        )
+        sensors.reset_IMU()
+        sensors.reset_encoders()
+        sensors.reset_localization()
+
         self.print("Alive!")
 
     def _loop_impl(self) -> None:
-        data_lines = MCUSerialInterface.read_lines(which_thread=self, max_lines=self._max_lines_read_per_loop)
-        # self.print(f"Read {len(data_lines)} lines from serial")
-        if not data_lines:
-            return
-        
-        # Parse data lines
-        for line in data_lines:
-            # Variables are formatted with comma delineators, e.g:
-            # sensor.imu.roll:10,sensor.imu.pitch:30,sensor.imu.yaw:90,...
-            split_variables = line.split(",")
-            for variable in split_variables:
-                split_var = variable.split(":", 1)
-                if len(split_var) != 2:
-                    continue
-                
-                # Process split variable
-                key, value = split_var
-                entry = sensor_variables.get(key)
-                if entry:
-                    try:
-                        cast_value = entry.cast(value)
-                        self[key] = cast_value # Write to global data
-                        WebSocketInterface.send_variable(self, key, value)
-                        # self.print(f"Received {key}: {self[key]} {type(self[key])}")
-                    except ValueError:
-                        self.print(f"Bad value for key {key}: {value}")
+        variables = sensors.get_variables(max_lines=self._max_lines_read_per_loop)
+        for key, value_str, value in variables:
+            self[key] = value # Write to global data
+            WebSocketInterface.send_variable(self, key, value_str)
+            # self.print(f"Received {key}: {self[key]} {type(self[key])}")
     
         # Share robot pose
         self.broadcast_robot_pose()

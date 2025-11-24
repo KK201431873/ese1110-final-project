@@ -13,12 +13,12 @@ def drive_speed_angle(speed: float, angle: float) -> None:
 def set_left_drive_power(power: float) -> None:
     """Set the power of the left drive motor. Power must be between `-1.0` and `1.0`."""
     power = clamp(power, -1.0, 1.0)
-    MCUSerialInterface.write_line("ControllerThread", f"command.drive.left:{power}")
+    MCUSerialInterface.write_line_actuator("ControllerThread", f"command.drive.left:{power}")
 
 def set_right_drive_power(power: float) -> None:
     """Set the power of the right drive motor. Power must be between `-1.0` and `1.0`."""
     power = clamp(power, -1.0, 1.0)
-    MCUSerialInterface.write_line("ControllerThread", f"command.drive.right:{power}")
+    MCUSerialInterface.write_line_actuator("ControllerThread", f"command.drive.right:{power}")
 
 def stop_drive() -> None:
     """Set the power of both drive motors to zero."""
@@ -28,12 +28,12 @@ def stop_drive() -> None:
 def set_intake_position(position: float) -> None:
     """Set the position of the intake servo. Position must be between `0.0` and `1.0`."""
     position = clamp(position, 0.0, 1.0)
-    MCUSerialInterface.write_line("ControllerThread", f"command.intake.position:{position}")
+    MCUSerialInterface.write_line_actuator("ControllerThread", f"command.intake.position:{position}")
 
 def set_intake_power(power: float) -> None:
     """Set the power of the intake motor. Power must be between `-1.0` and `1.0`."""
     power = clamp(power, -1.0, 1.0)
-    MCUSerialInterface.write_line("ControllerThread", f"command.intake.motor:{power}")
+    MCUSerialInterface.write_line_actuator("ControllerThread", f"command.intake.motor:{power}")
 
 __all__ = [
     "set_left_drive_power",

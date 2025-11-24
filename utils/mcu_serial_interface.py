@@ -140,10 +140,16 @@ class MCUSerialInterface():
             return []
 
     @classmethod
-    def write_line(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
+    def write_line_actuator(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
         cls._ensure_init()
         if cls._actuator:
             cls._actuator.write_line(which_thread, data)
+
+    @classmethod
+    def write_line_peripheral(cls, which_thread: type[PiThread] | PiThread | str, data: str) -> None:
+        cls._ensure_init()
+        if cls._peripheral:
+            cls._peripheral.write_line(which_thread, data)
 
     @classmethod
     def close_all(cls) -> None:
