@@ -45,8 +45,9 @@ controller_thread:
   USE_IOT_COMMANDS: true
 
   # Tuned values
-  INTAKE_UP_POS: 0.70
-  INTAKE_DOWN_POS: 0.5
+  INTAKE_UP_POS: 0.74
+  INTAKE_DOWN_POS: 0.53
+  INTAKE_ON_POWER: 1
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
   NO_DETECTION_TIMEOUT: 0.5
@@ -144,7 +145,7 @@ inference_thread:
   model_input_size: [256, 256]
 
   # Reject detections with confidence lower than this threshold
-  min_score: 0.3
+  min_score: 0.6
 
   # --- Pose estimation config---
   # We assume the bottom edge of the camera is parallel with the plane of the floor.

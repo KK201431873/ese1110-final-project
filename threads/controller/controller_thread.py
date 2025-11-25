@@ -39,6 +39,7 @@ class ControllerThread(PiThread):
     # Tuned values
     INTAKE_UP_POS: float
     INTAKE_DOWN_POS: float
+    INTAKE_ON_POWER: float
 
     NO_DETECTION_TIMEOUT: float
     """Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds)."""
@@ -94,6 +95,7 @@ class ControllerThread(PiThread):
         self.USE_IOT_COMMANDS = controller_settings["USE_IOT_COMMANDS"]
         self.INTAKE_UP_POS = controller_settings["INTAKE_UP_POS"]
         self.INTAKE_DOWN_POS = controller_settings["INTAKE_DOWN_POS"]
+        self.INTAKE_ON_POWER = controller_settings["INTAKE_ON_POWER"]
         self.NO_DETECTION_TIMEOUT = controller_settings["NO_DETECTION_TIMEOUT"]
         self.BALL_MAX_LIFESPAN = controller_settings["BALL_MAX_LIFESPAN"]
         self.BALL_MAX_DRIFT = controller_settings["BALL_MAX_DRIFT"]
@@ -175,7 +177,7 @@ class ControllerThread(PiThread):
                 
                 # Lower and run intake
                 controller.set_intake_position(self.INTAKE_DOWN_POS)
-                controller.set_intake_power(1.0)
+                controller.set_intake_power(self.INTAKE_ON_POWER)
                 
                 # Control heading and approach ball (convert absolute to relative coordinates using robot pose)
                 dx = self._ball_points[1].x - robot_pose.COORDS.x
@@ -215,7 +217,7 @@ class ControllerThread(PiThread):
                 # Stop moving, raise intake, keep running rollers
                 controller.stop_drive()
                 controller.set_intake_position(self.INTAKE_UP_POS)
-                controller.set_intake_power(1.0)
+                controller.set_intake_power(self.INTAKE_ON_POWER)
 
                 # State change logic
                 if now - self._transfer_start_time > self.TRANSFER_DURATION:
