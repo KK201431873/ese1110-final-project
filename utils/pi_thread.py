@@ -164,6 +164,11 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                 else:
                     self.print(message)
 
+        if PiThread.has_crashed():
+            self.print("Exiting!")
+            self.kill()
+            return
+
         # Main loop logic
         next_loop_time = time.perf_counter()
         while self._alive:
@@ -177,6 +182,11 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                     self.raise_error(RuntimeError, message)
                 else:
                     self.print(message)
+
+            if PiThread.has_crashed():
+                self.print("Exiting!")
+                self.kill()
+                return
 
             # Calculate real loop frequency
             now = time.perf_counter()
@@ -197,13 +207,18 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
             if blocking_time > 0:
                 # Don't call sleep(0)
                 time.sleep(blocking_time)
+            
+            if PiThread.has_crashed():
+                self.print("Exiting!")
+                self.kill()
+                return
 
     def kill(self, join: bool = True) -> None:
         """Permanently stop this thread. Cannot be restarted or recreated."""
         try:
             self._on_shutdown_impl()
         except Exception as shutdown_err:
-            self.raise_error(RuntimeError, f"Error in shutdown: {shutdown_err}")
+            self.print(RuntimeError(f"Error in shutdown: {shutdown_err}"))
         self._alive = False
         if self.name in PiThread._global_data_locks:
             with PiThread._global_data_locks[self.name]:
@@ -212,12 +227,15 @@ class PiThread(threading.Thread, metaclass=PiThreadMeta):
                 if self.name in PiThread._global_data:
                     PiThread._global_data[self.name].clear()
             del PiThread._global_data_locks[self.name]
-        if join and self.is_alive() and threading.current_thread() != self:
+        if join and threading.current_thread() != self:
             self.join()
     
     @classmethod
     def kill_all(cls) -> None:
         """Kill all running PiThread instances safely."""
+        with PiThread._crash_lock:
+            PiThread._crash_report.crashed = True
+            PiThread._crash_report.message = "Kill all threads requested."
         for t in cls.get_all_threads():
             try:
                 t.kill()

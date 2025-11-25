@@ -8,22 +8,22 @@ module_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', ''))
 # Add the directory to sys.path
 sys.path.append(module_dir)
 
-from threads.arduino_serial.arduino_serial_thread import ArduinoSerialThread
+from threads.peripherals.sensor_thread import SensorThread
 from utils.pi_thread import PiThread
 import threading
 import time
 
-from utils.rotation_visualizer import update_orientation
+from __testing.rotation_visualizer import update_orientation
 import matplotlib.pyplot as plt
 import numpy as np
 
 def main(with_watchdog: bool = True):
     # camera_thread = CameraThread(frequency=5)
-    arduino_serial_thread = ArduinoSerialThread(frequency=100)
+    sensor_thread = SensorThread(frequency=100)
 
     print("[MAIN] Starting up robot...")
     # camera_thread.start()
-    arduino_serial_thread.start()
+    sensor_thread.start()
 
     # === Initialize plot once ===
     plt.ion()  # interactive mode ON
@@ -45,9 +45,9 @@ def main(with_watchdog: bool = True):
             # time.sleep(0.1)
 
 
-            roll = float(ArduinoSerialThread["imu.roll"] or 0)
-            pitch = float(ArduinoSerialThread["imu.pitch"] or 0)
-            yaw = float(ArduinoSerialThread["imu.yaw"] or 0)
+            roll = float(SensorThread["imu.roll"] or 0)
+            pitch = float(SensorThread["imu.pitch"] or 0)
+            yaw = float(SensorThread["imu.yaw"] or 0)
 
             update_orientation(ax, np.radians(roll), np.radians(pitch), np.radians(yaw))
             plt.pause(0.05)  # update the GUI event loop

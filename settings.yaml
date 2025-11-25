@@ -1,16 +1,192 @@
-camera:
-  frequency: 10
-  model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
-  input_size: [256, 256]
-  min_score: 0.3
-  exposure_time: 5000
-
-arduino_serial:
-  frequency: 100
-  serial_port: "/dev/ttyACM0"
-  baudrate: 115200
-  max_lines_read_per_loop: 50
-
 main:
   with_watchdog: true
-  show_camera: true
+  show_camera: false
+  show_detections: true
+
+
+mcu_serial_interface:
+  # Path to the USB serial ports for each MCU
+  # How to check what serial devices are connected: ls /dev/serial/by-id
+  # If not detected, something might be shorting 5V to GND
+  sensor_port: "/dev/serial/by-id/usb-Teensyduino_USB_Serial_18483060-if00"
+  actuator_port: "/dev/serial/by-id/usb-Arduino_UNO_R4_Minima_38080C1A37323335DBC233324B572D3A-if00"
+
+  # Baudrate, must be same as both MCU's
+  baudrate: 115200
+
+
+websocket_interface:
+  # WebSocket URL to send data to
+  server_ws: "ws://ese.pongworks.dpdns.org/pi_stream"
+
+  # Entry password set by the WebSocket endpoint
+  pi_stream_password: "pongworks1110"
+
+
+drive_config:
+  # Encoder ticks per revolution of the wheel motor.
+  ticks_per_rev: 6528
+  
+  # (Wheel gear diameter) / (Motor gear diameter).
+  # Less than 1 means wheels rotate faster than the motor.
+  gear_ratio: 0.5
+
+  # Diameter of the wheels (meters).
+  wheel_diameter: 0.07
+
+  # Distance between the left and right wheels (meters).
+  wheel_base: 0.332
+
+
+controller_thread:
+  frequency: 60
+
+  # Whether or not to run robot based on IoT commands.
+  USE_IOT_COMMANDS: true
+
+  # Tuned values
+  INTAKE_UP_POS: 0.77
+  INTAKE_DOWN_POS: 0.51
+  INTAKE_ON_POWER: 1
+
+  # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
+  NO_DETECTION_TIMEOUT: 1
+
+  # Maximum time before forcing a new target position (seconds).
+  BALL_MAX_LIFESPAN: 0.5
+
+  # Maximum movement of the ball before forcing a new target position (meters).
+  BALL_MAX_DRIFT: 0.05 # 5cm
+
+  # Priority for heading correction over driving forward during PICKUP. Must be positive.
+  HEADING_PRIORITY: 60
+
+  # Proportion of maximum linear velocity to cap speed at during PICKUP.
+  MAX_PICKUP_SPEED: 0.5
+
+  # Coefficient multiplied to distance from target ball to get speed.
+  SPEED_kP: 100.0
+
+  # PID tuning constants
+  kP: 1.0
+  kI: 0.0
+  kD: 0.0
+
+  # TEMPORARY VARIABLE (we don't have ball sensor) Distance threshold to assume we picked up a ball and change to TRANSFER state (meters).
+  BALL_PICKUP_THRESHOLD: 0.1
+
+  # Amount of time to remain in the TRANSFER state, must be long enough for ball to fall into bin (seconds).
+  TRANSFER_DURATION: 3.0
+
+
+iot_camera_feed_thread:
+  frequency: 10
+
+  # Dimensions of the video feed frame, in pixels.
+  resized_size: [320, 240]
+
+
+iot_minimap_thread:
+  frequency: 20
+
+  # Colors
+  BG_COLOR: [20, 20, 20]
+  MINOR_COLOR: [40, 40, 40]
+  MAJOR_COLOR: [70, 70, 70]
+  FAR_DETECTION_COLOR: [93, 206, 250]
+  BEST_DETECTION_COLOR: [50, 129, 239]
+
+  # Dimensions of the minimap image, in pixels.
+  minimap_size: [640, 320]
+
+  # Physical width represented by the minimap.
+  width_meters: 4.0 
+
+  # Number of equally-spaced grid lines drawn per meter.
+  meter_subdivisions: 4
+
+  # Length of "track marks" left by robot while driving (number of list items).
+  trail_length: 80
+
+
+iot_receive_thread:
+  frequency: 30
+
+
+sensor_thread:
+  frequency: 30
+
+  # Maximum number of lines to read from the serial interface per loop.
+  max_lines_read_per_loop: 5
+  
+  # Filter coefficient between IMU yaw and motor encoder localization. Must be between 0 and 1.
+  # Values closer to 1 give more weight to the IMU.
+  alpha: 0.0
+
+
+camera_thread:
+  frequency: 30
+
+  # Camera output frame size, in pixels
+  frame_size: [640, 480]
+
+  # Camera module exposure time, in microseconds
+  exposure_time: 5000
+
+
+inference_thread:
+  frequency: 10
+
+  # --- Model config ---
+  # Path to the YOLO model
+  model_path: "threads/vision/detection_models/pong_11-2-25_1226AM_small.onnx"
+
+  # Model input frame size, in pixels
+  model_input_size: [256, 256]
+
+  # Reject detections with confidence lower than this threshold
+  min_score: 0.6
+
+  # --- Pose estimation config---
+  # We assume the bottom edge of the camera is parallel with the plane of the floor.
+  # The robot coordinate system is defined below:
+  #
+  #         ^ +Y (left of robot)
+  #         |
+  # __________________
+  # |                |
+  # |                |
+  # |      <-\ +H    | --> +X (front of robot)
+  # |       _/       |
+  # |                |
+  # ------------------
+  
+  # Usually the width of the camera in pixels
+  FOV: 640
+
+  # Horizontal FOV (degrees)
+  fov_x: 66
+
+  # Vertical FOV (degrees)
+  fov_y: 41
+  
+  # The camera's positive angle from the vertical (degrees)
+  lens_incline: 21 # TODO: CONFIRM
+
+  # The height of the camera lens from the ground (m)
+  lens_height: 0.20
+
+  # The forward offset of the camera lens from the center of the robot (m)
+  # When facing forward, the +x direction is forward
+  lens_x_offset: 0.00
+
+  # The lateral offset of the camera lens from the center of the robot (m)
+  # When facing forward, the +y direction is to the left
+  lens_y_offset: 0.00
+
+  # The angular offset of the camera lens from the robot's forward direction (degrees)
+  # When facing forward, the angular offset is 0 and counter-clockwise is positive
+  lens_angular_offset: 0
+
+  # Diameter of the ping-pong ball (m)
+  pong_ball_diameter: 0.04
