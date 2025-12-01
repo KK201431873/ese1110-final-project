@@ -198,7 +198,7 @@ class ControllerThread(PiThread):
                 distance = math.hypot(e_x, e_y)
 
                 # Control outputs
-                speed = clamp(0, self.SPEED_kP * distance * k, self.MAX_PICKUP_SPEED)
+                speed = clamp(self.SPEED_kP * distance * k, 0, self.MAX_PICKUP_SPEED)
                 angle = self._pid_controller.update(e_h)
                 
                 controller.drive_speed_angle(speed, angle)
