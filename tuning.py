@@ -48,15 +48,18 @@ class ControllerThread(PiThread):
                 controller.set_intake_position(self.INTAKE_UP_POS)
                 controller.set_intake_power(0.0)
                 return
+            
+        # controller.set_intake_power(1)
+        controller.set_right_drive_power(0.5)
         
-        yaw = SensorThread["imu.yaw"]
-        if yaw is not None:
-            target = 180.0 # degrees
-            error = normalize_angle(target - yaw)
-            if error > 0:
-                controller.drive_speed_angle(0, 0.5)
-            else:
-                controller.stop_drive()
+        # yaw = SensorThread["imu.yaw"]
+        # if yaw is not None:
+        #     target = 180.0 # degrees
+        #     error = normalize_angle(target - yaw)
+        #     if error > 0:
+        #         controller.drive_speed_angle(0, 0.5)
+        #     else:
+        #         controller.stop_drive()
         
 
     def _on_shutdown_impl(self) -> None:
