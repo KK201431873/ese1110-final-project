@@ -45,8 +45,8 @@ controller_thread:
   USE_IOT_COMMANDS: true
 
   # Tuned values
-  INTAKE_UP_POS: 0.9
-  INTAKE_DOWN_POS: 0.55
+  INTAKE_UP_POS: 0.95
+  INTAKE_DOWN_POS: 0.68
   INTAKE_ON_POWER: 1
 
   # Maximum time without detecting a ball in PICKUP state before switching to SEARCH state (seconds).
