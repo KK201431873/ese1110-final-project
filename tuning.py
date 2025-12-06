@@ -33,6 +33,7 @@ class ControllerThread(PiThread):
         controller_settings = settings["controller_thread"]
         self.USE_IOT_COMMANDS = controller_settings["USE_IOT_COMMANDS"]
         self.INTAKE_UP_POS = controller_settings["INTAKE_UP_POS"]
+        self.INTAKE_DOWN_POS = controller_settings["INTAKE_DOWN_POS"]
         pass
 
     def _on_start_impl(self) -> None:
@@ -49,8 +50,10 @@ class ControllerThread(PiThread):
                 controller.set_intake_power(0.0)
                 return
             
-        # controller.set_intake_power(1)
-        controller.set_right_drive_power(0.5)
+        controller.set_intake_power(0.75)
+        # controller.set_right_drive_power(0.5)
+        controller.set_intake_position(self.INTAKE_UP_POS)
+        controller.drive_speed_angle(0, 0.3)
         
         # yaw = SensorThread["imu.yaw"]
         # if yaw is not None:

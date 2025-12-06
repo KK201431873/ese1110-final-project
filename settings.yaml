@@ -131,7 +131,7 @@ camera_thread:
   frame_size: [640, 480]
 
   # Camera module exposure time, in microseconds
-  exposure_time: 5000
+  exposure_time: 20000 #5000
 
 
 inference_thread:
